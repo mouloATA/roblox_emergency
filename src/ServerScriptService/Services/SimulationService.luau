@@ -31,6 +31,7 @@ local VehicleService = require(Services:WaitForChild("VehicleService"))
 local PersonnelService = require(Services:WaitForChild("PersonnelService"))
 
 local SimulationService = {}
+local MissionService = require(Services:WaitForChild("MissionService"))
 
 -- Vitesse courante, toujours ramenée à une valeur autorisée.
 function SimulationService.timeScale(world: any): number
@@ -102,7 +103,7 @@ function SimulationService.step(world: any, dt: number): ()
 	end
 
 	-- Nouvelles alertes uniquement pendant le service.
-	if not world.finished then
+	if not world.finished and not (world.mission and world.mission.status == "active") then
 		world.alarmCountdown -= scaled
 		if world.alarmCountdown <= 0 then
 			if IncidentService.activeCount(world) < world.config.MAX_ACTIVE_INCIDENTS then
@@ -120,6 +121,7 @@ function SimulationService.step(world: any, dt: number): ()
 
 	DispatchService.step(world, scaled)
 	IncidentService.step(world, scaled)
+	MissionService.step(world)
 	VehicleService.stepRepair(world, scaled)
 	PersonnelService.stepFatigue(world, scaled)
 end

@@ -50,13 +50,15 @@ local okStore, dataStore = pcall(function()
 end)
 
 if okStore and dataStore then
-	store = SaveService.dataStoreAdapter(dataStore)
-	local loaded = SaveService.load(world, store)
-	persistenceEnabled = true
-	if loaded.ok then
-		Operations.log(world, Constants.LOG.SYSTEM, "Progression restaurée depuis le DataStore.")
+	local persistentStore = SaveService.dataStoreAdapter(dataStore)
+	local loaded = SaveService.load(world, persistentStore)
+	if loaded.ok or (loaded.data and loaded.data.empty) then
+		store = persistentStore
+		persistenceEnabled = true
+		local message = loaded.ok and "Progression restaurée depuis le DataStore." or "Début d’une nouvelle garde."
+		Operations.log(world, Constants.LOG.SYSTEM, message)
 	else
-		Operations.log(world, Constants.LOG.INFO, "Nouvelle partie (aucune sauvegarde DataStore lisible).")
+		Operations.log(world, Constants.LOG.FAILURE, loaded.message .. " Cette garde utilise la mémoire locale.")
 	end
 else
 	Operations.log(world, Constants.LOG.FAILURE, "DataStore indisponible : partie non persistante.")
@@ -67,6 +69,7 @@ end
 -- ─────────────────────────────────────────────────────────────
 local remotes = NetworkService.createRemotes(ReplicatedStorage)
 local network = NetworkService.mount(world, remotes)
+require(Services:WaitForChild("HudPreferenceService")).mount(remotes.folder)
 
 -- Les joueurs déjà présents au moment du montage (Studio / hot reload).
 for _, player in ipairs(Players:GetPlayers()) do

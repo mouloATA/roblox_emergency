@@ -87,6 +87,7 @@ function Widgets.label(parent: any, name: string, text: string, props: any?): an
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.RichText = false
 	apply(label, props)
+	label.TextSize = math.max(Theme.text.tiny, label.TextSize)
 	label.Parent = parent
 	return label
 end
@@ -104,6 +105,7 @@ function Widgets.button(parent: any, name: string, text: string, onClick: () -> 
 	button.AutoButtonColor = true
 	button.TextWrapped = false
 	apply(button, props)
+	button.TextSize = math.max(Theme.text.tiny, button.TextSize)
 	button.Active = true
 	baseTransparency[button] = button.BackgroundTransparency
 	Widgets.corner(button, Theme.radius.small)
@@ -365,6 +367,38 @@ function Widgets.list(container: any, keyOf: (any) -> any, create: (any) -> any,
 			end
 		end,
 	}
+end
+
+-- Poignée souris/tactile : les déplacements sont convertis en unités logiques du HUD.
+function Widgets.resizeHandle(parent: any, position: any, anchor: any, direction: any, scale: () -> number, onResize: (number, number) -> ()): any
+	local inputService = game:GetService("UserInputService")
+	local handle = Widgets.button(parent, "Redimensionner", "↔", function() end, {
+		Position = position, AnchorPoint = anchor, Size = UDim2.fromOffset(24, 20),
+		ZIndex = 15, TextSize = 14,
+	})
+	local drag = nil
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			drag = { input = input, position = input.Position, width = parent.Size.X.Offset, height = parent.Size.Y.Offset, scale = scale() }
+		end
+	end)
+	local changed = inputService.InputChanged:Connect(function(input)
+		if not drag then return end
+		local touch = drag.input.UserInputType == Enum.UserInputType.Touch
+		if (touch and input ~= drag.input) or (not touch and input.UserInputType ~= Enum.UserInputType.MouseMovement) then return end
+		onResize(drag.width + direction.X * (input.Position.X - drag.position.X) / drag.scale,
+			drag.height + direction.Y * (input.Position.Y - drag.position.Y) / drag.scale)
+	end)
+	local ended = inputService.InputEnded:Connect(function(input)
+		if drag and (input == drag.input or input.UserInputType == Enum.UserInputType.MouseButton1) then drag = nil end
+	end)
+	local focus = inputService.WindowFocusReleased:Connect(function() drag = nil end)
+	handle.Destroying:Connect(function()
+		changed:Disconnect()
+		ended:Disconnect()
+		focus:Disconnect()
+	end)
+	return handle
 end
 
 return Widgets

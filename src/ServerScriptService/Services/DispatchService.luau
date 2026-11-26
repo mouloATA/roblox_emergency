@@ -27,6 +27,9 @@ local PermissionService = require(Services:WaitForChild("PermissionService"))
 local BudgetService = require(Services:WaitForChild("BudgetService"))
 local VehicleService = require(Services:WaitForChild("VehicleService"))
 
+local ProgressionService = require(Services:WaitForChild("ProgressionService"))
+local HospitalService = require(Services:WaitForChild("HospitalService"))
+
 local DispatchService = {}
 
 -- Véhicules réellement sur les lieux d'une intervention.
@@ -47,7 +50,9 @@ end
 -- Engin déjà sur place : bascule immédiate sur les lieux.
 function DispatchService.arriveOnScene(world: any, vehicle: any, incident: any): ()
 	vehicle.status = Constants.VEHICLE_STATUS.ON_SCENE
+	vehicle.route = nil
 	incident.onScene[vehicle.id] = true
+	ProgressionService.arrive(world, incident, vehicle)
 	if incident.status == Constants.INCIDENT_STATUS.PENDING then
 		incident.status = Constants.INCIDENT_STATUS.ACTIVE
 	end
@@ -58,7 +63,8 @@ function DispatchService.arriveOnScene(world: any, vehicle: any, incident: any):
 	))
 end
 
-function DispatchService.dispatch(world: any, actorId: number, vehicleId: number, incidentId: number): any
+-- Engage un équipage prêt et réarme sa réserve d’eau au départ du poste.
+function DispatchService.dispatch(world: any, actorId: number, vehicleId: number, incidentId: string): any
 	local vehicle = world.vehicles[vehicleId]
 	if not vehicle then
 		return Result.err("Véhicule inconnu.")
@@ -97,6 +103,9 @@ function DispatchService.dispatch(world: any, actorId: number, vehicleId: number
 		return spend
 	end
 
+	vehicle.water = typeDef.waterCapacity or 0
+	vehicle.fieldOrder = Constants.FIELD_ORDER.AUTO
+	vehicle.fieldActivity = nil
 	incident.assigned[vehicle.id] = true
 	incident.status = Constants.INCIDENT_STATUS.ACTIVE
 	vehicle.incidentId = incident.id
@@ -131,6 +140,9 @@ function DispatchService.recall(world: any, actorId: number, vehicleId: number):
 	local check = PermissionService.requireVehicle(world, actorId, Constants.ACTION.RECALL, vehicle)
 	if not check.ok then
 		return check
+	end
+	if (vehicle.patients or 0) > 0 then
+		return Result.err("Transmission des victimes aux urgences en cours.")
 	end
 	if vehicle.incidentId == nil then
 		return Result.err("Ce véhicule n'est pas engagé.")
@@ -167,6 +179,8 @@ function DispatchService.step(world: any, dt: number): ()
 					Operations.release(world, vehicle)
 				end
 			end
+		elseif vehicle.status == Constants.VEHICLE_STATUS.TRANSPORTING or vehicle.status == Constants.VEHICLE_STATUS.HANDOVER then
+			HospitalService.stepVehicle(world, vehicle)
 		elseif vehicle.status == Constants.VEHICLE_STATUS.RETURNING then
 			if Operations.stepRoute(world, vehicle) then
 				Operations.arriveHome(world, vehicle)

@@ -19,6 +19,8 @@ local Services = ServerScript:WaitForChild("Services")
 local PermissionService = require(Services:WaitForChild("PermissionService"))
 local BudgetService = require(Services:WaitForChild("BudgetService"))
 
+local PurchaseService = require(Services:WaitForChild("PurchaseService"))
+
 local VehicleService = {}
 
 local MIN_CONDITION = 20
@@ -97,7 +99,7 @@ function VehicleService.create(world: any, typeId: string, callsign: string?): a
 end
 
 function VehicleService.buy(world: any, actorId: number, typeId: string): any
-	local check = PermissionService.require(world, actorId, Constants.ACTION.BUY_VEHICLE)
+	local check = PurchaseService.check(world, actorId)
 	if not check.ok then
 		return check
 	end
@@ -112,11 +114,12 @@ function VehicleService.buy(world: any, actorId: number, typeId: string): any
 	if count >= world.config.MAX_FLEET then
 		return Result.err(string.format("Parc complet : %d véhicules maximum.", world.config.MAX_FLEET))
 	end
-	if not BudgetService.canAfford(world, typeDef.cost) then
-		return Result.err(string.format("Budget insuffisant : %d € requis.", typeDef.cost))
+	local price = PurchaseService.price(world, typeDef.cost)
+	if not BudgetService.canAfford(world, price) then
+		return Result.err(string.format("Budget insuffisant : %d € requis.", price))
 	end
 
-	local spend = BudgetService.spend(world, typeDef.cost, "Achat " .. typeDef.name)
+	local spend = BudgetService.spend(world, price, "Achat " .. typeDef.name)
 	if not spend.ok then
 		return spend
 	end
@@ -124,15 +127,16 @@ function VehicleService.buy(world: any, actorId: number, typeId: string): any
 	local created = VehicleService.create(world, typeId)
 	if not created.ok then
 		-- Rembourse l'achat si la création échoue : aucune perte silencieuse.
-		BudgetService.earn(world, typeDef.cost, "Remboursement achat " .. typeDef.name)
+		BudgetService.earn(world, price, "Remboursement achat " .. typeDef.name)
 		return created
 	end
 
 	Operations.log(world, Constants.LOG.MONEY, string.format(
 		"Achat de %s (%d €).",
 		created.data.callsign,
-		typeDef.cost
+		price
 	))
+	PurchaseService.advance(world, actorId, true)
 	return created
 end
 

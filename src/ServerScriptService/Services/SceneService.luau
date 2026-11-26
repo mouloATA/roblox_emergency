@@ -14,6 +14,8 @@
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local City = require(Shared:WaitForChild("City"))
 local Rng = require(Shared:WaitForChild("Utilities"):WaitForChild("Rng"))
+local Services = game:GetService("ServerScriptService"):WaitForChild("ERS"):WaitForChild("Services")
+local Architecture = require(Services:WaitForChild("Architecture"))
 
 local SceneService = {}
 
@@ -76,32 +78,49 @@ local function buildRoads(scene: any, plan: any, scale: number): ()
 	roads.Name = "Voirie"
 	roads.Parent = scene
 
-	for index, road in ipairs(plan.roads) do
-		if road.axis == "avenue" then
-			local size = Vector3.new(road.width * scale, 0.2, (road.z1 - road.z0) * scale)
-			local position = Vector3.new(road.x * scale, 0.12, (road.z0 + road.z1) / 2 * scale)
-			makePart(roads, "Avenue_" .. index, size, position, Color3.fromRGB(54, 55, 60), Enum.Material.Asphalt)
-		else
-			local size = Vector3.new((road.x1 - road.x0) * scale, 0.2, road.width * scale)
-			local position = Vector3.new((road.x0 + road.x1) / 2 * scale, 0.12, road.z * scale)
-			makePart(roads, "Rue_" .. index, size, position, Color3.fromRGB(54, 55, 60), Enum.Material.Asphalt)
+	-- Découpe les rubans aux carrefours : une seule face visible par zone.
+	local function ribbon(parent: any, name: string, strip: any, height: number, bottom: number, cuts: boolean, margin: number, color: Color3, material: Enum.Material)
+		local avenue = strip.axis == "avenue"
+		local first, last = avenue and strip.z0 or strip.x0, avenue and strip.z1 or strip.x1
+		local intervals = {}
+		if cuts then
+			for _, cross in ipairs(plan.roads) do
+				if (cross.axis == "avenue") ~= avenue then
+					local center = avenue and cross.z or cross.x
+					table.insert(intervals, {center - cross.width / 2 - margin, center + cross.width / 2 + margin})
+				end
+			end
 		end
+		table.sort(intervals, function(a, b) return a[1] < b[1] end)
+		local segment = 0
+		local function emit(start: number, finish: number)
+			if finish <= start then return end
+			segment += 1
+			local length, center = (finish - start) * scale, (start + finish) / 2 * scale
+			local size = avenue and Vector3.new(strip.width * scale, height, length) or Vector3.new(length, height, strip.width * scale)
+			local position = avenue and Vector3.new(strip.x * scale, bottom + height / 2, center)
+				or Vector3.new(center, bottom + height / 2, strip.z * scale)
+			makePart(parent, name .. "_" .. segment, size, position, color, material)
+		end
+		local cursor = first
+		for _, interval in ipairs(intervals) do
+			emit(cursor, math.min(last, interval[1]))
+			cursor = math.max(cursor, interval[2])
+		end
+		emit(cursor, last)
+	end
+	for index, road in ipairs(plan.roads) do
+		ribbon(roads, (road.axis == "avenue" and "Avenue_" or "Rue_") .. index,
+			road, 0.2, 0.02, road.axis ~= "avenue", 0, Color3.fromRGB(54, 55, 60), Enum.Material.Asphalt)
 	end
 
 	local sidewalks = Instance.new("Folder")
 	sidewalks.Name = "Trottoirs"
 	sidewalks.Parent = scene
 	for index, walk in ipairs(plan.sidewalks) do
-		local height = 0.22
-		if walk.axis == "avenue" then
-			local size = Vector3.new(walk.width * scale, height, (walk.z1 - walk.z0) * scale)
-			local position = Vector3.new(walk.x * scale, height / 2, (walk.z0 + walk.z1) / 2 * scale)
-			makePart(sidewalks, "Trottoir_" .. index, size, position, Color3.fromRGB(144, 142, 136), Enum.Material.Concrete)
-		else
-			local size = Vector3.new((walk.x1 - walk.x0) * scale, height, walk.width * scale)
-			local position = Vector3.new((walk.x0 + walk.x1) / 2 * scale, height / 2, walk.z * scale)
-			makePart(sidewalks, "Trottoir_" .. index, size, position, Color3.fromRGB(144, 142, 136), Enum.Material.Concrete)
-		end
+		-- Les avenues possèdent les coins ; les rues s'arrêtent avant ces coins.
+		ribbon(sidewalks, "Trottoir_" .. index, walk, 0.37, 0, true,
+			walk.axis == "avenue" and 0 or City.SIDEWALK, Color3.fromRGB(144, 142, 136), Enum.Material.Concrete)
 	end
 end
 
@@ -210,6 +229,13 @@ local function buildBuildings(scene: any, plan: any, scale: number, config: any)
 		local centerX = (xMin + xMax) / 2
 		local centerZ = (zMin + zMax) / 2
 
+		if building.style == "caserne" then
+			continue -- La remise et sa tour sont construites avec leur parvis.
+		elseif building.style == "eglise" then
+			Architecture.church(folder, decoration, centerX, centerZ, width, depth, height)
+			continue
+		end
+
 		makePart(
 			folder,
 			"Batiment_" .. index,
@@ -233,6 +259,7 @@ local function buildBuildings(scene: any, plan: any, scale: number, config: any)
 			xMax = xMax,
 			zMax = zMax,
 		}, scale, floors, config.FLOOR_HEIGHT)
+		Architecture.detail(folder, decoration, building, centerX, centerZ, width, depth, height, index)
 	end
 end
 
@@ -297,7 +324,7 @@ local function buildGround(scene: any, plan: any, scale: number, config: any): (
 	-- Le sol s'arrête à la ceinture boisée : plus de dalle géante qui déborde
 	-- de la carte et laisse voir son bord sous l'horizon.
 	local ground = makePart(scene, "Sol", Vector3.new(size, 2, size),
-		Vector3.new(size / 2, -1, size / 2), config.GROUND_COLOR, Enum.Material.Grass)
+		Vector3.new(City.WIDTH * scale / 2, -1, City.WIDTH * scale / 2), config.GROUND_COLOR, Enum.Material.Grass)
 	ground.Name = "Sol"
 
 	local lots = Instance.new("Folder")
@@ -432,9 +459,21 @@ local function buildBarracks(scene: any, plan: any, scale: number, config: any):
 		Color3.fromRGB(66, 42, 40), Enum.Material.Slate)
 
 	for door = 0, 3 do
-		decoration(folder, "Remise_" .. door, Vector3.new(4.2, 5.2, 0.3),
-			Vector3.new(bx0 + 6 + door * (bx1 - bx0 - 12) / 3, 2.7, bz1 + 0.16),
+		local doorX = bx0 + 6 + door * (bx1 - bx0 - 12) / 3
+		decoration(folder, "Remise_" .. door, Vector3.new(7.6, 5.2, 0.3),
+			Vector3.new(doorX, 2.7, bz1 + 0.16),
 			Color3.fromRGB(58, 52, 50), Enum.Material.Metal)
+		for panel = 1, 4 do
+			decoration(folder, "SectionRemise", Vector3.new(7.5, panel == 3 and 0.70 or 0.10, 0.14),
+				Vector3.new(doorX, 0.35 + panel, bz1 + 0.35), Color3.fromRGB(112, 135, 145), Enum.Material.Metal)
+		end
+	end
+	local towerX, towerZ = bx0 + 6, bz0 + 5
+	makePart(folder, "TourDeSechage", Vector3.new(8, 18, 8), Vector3.new(towerX, 9, towerZ),
+		Color3.fromRGB(154, 85, 65), Enum.Material.Brick)
+	for level = 1, 3 do
+		decoration(folder, "OuvertureTour", Vector3.new(3.1, 2.25, 0.15), Vector3.new(towerX, 7 + level * 3, towerZ + 4.1),
+			Color3.fromRGB(60, 68, 72), Enum.Material.Metal)
 	end
 
 	-- Bandeau « CASERNE » au-dessus des remises.

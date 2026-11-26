@@ -126,7 +126,7 @@ check("VPC armé", crewed.VPC.ok == true, crewed.VPC.message)
 check("FPT : 4 membres", #fpt.crew == 4, #fpt.crew)
 check("VSAV : 3 membres", #vsav.crew == 3, #vsav.crew)
 check("VPC : 1 membre", #vpc.crew == 1, #vpc.crew)
-check("personnel affecté comptabilisé", SaveService.count(world.personnel) == 12)
+check("personnel affecté comptabilisé", SaveService.count(world.personnel) == Config.START_PERSONNEL)
 
 local already = PersonnelService.autoCrew(world, 1, fpt.id)
 check("rééquipage refusé si complet", already.ok == false)
@@ -209,6 +209,14 @@ check("détecte une référence circulaire", SnapshotService.isSerializable(cycl
 suite("Sauvegarde et rechargement")
 -- ─────────────────────────────────────────────────────────────
 local store = SaveService.createMemoryStore()
+local offline = SaveService.dataStoreAdapter({
+	GetAsync = function() error("indisponible") end,
+	SetAsync = function() error("indisponible") end,
+})
+local unavailable = SaveService.load(world, offline)
+check("erreur de lecture distincte d’une première garde", not unavailable.ok and unavailable.data == nil
+	and SaveService.load(world, store).data.empty)
+check("refus du DataStore signalé au joueur", not SaveService.save(world, offline).ok)
 local saved = SaveService.save(world, store)
 check("sauvegarde réussie", saved.ok == true, saved.message)
 
@@ -217,7 +225,7 @@ local loaded = SaveService.load(reloaded, store)
 check("chargement réussi", loaded.ok == true, loaded.message)
 check("budget restauré", reloaded.budget == world.budget, reloaded.budget)
 check("flotte restaurée", SaveService.count(reloaded.vehicles) == 3, SaveService.count(reloaded.vehicles))
-check("effectif restauré", SaveService.count(reloaded.personnel) == 12, SaveService.count(reloaded.personnel))
+check("effectif restauré", SaveService.count(reloaded.personnel) == Config.START_PERSONNEL, SaveService.count(reloaded.personnel))
 check("équipage restauré", #vehicleOfType(reloaded, "FPT").crew == 4, #vehicleOfType(reloaded, "FPT").crew)
 check("matériel restauré", (vehicleOfType(reloaded, "FPT").equipment.ARI or 0) == 4)
 check("stock restauré", (reloaded.equipmentStock.ARI or 0) == (world.equipmentStock.ARI or 0))
@@ -279,6 +287,112 @@ check("pénalité appliquée", penaltyWorld.budget == Config.START_BUDGET - Inci
 check("statistique d'échec", penaltyWorld.stats.failed == 1)
 
 -- ─────────────────────────────────────────────────────────────
+suite("Terrain, propagation et évacuation sanitaire")
+do
+	local FireService = require(Services:WaitForChild("FireService"))
+	local FieldService = require(Services:WaitForChild("FieldService"))
+	local HospitalService = require(Services:WaitForChild("HospitalService"))
+	local function fixture(typeId, vehicleType)
+		local w = newWorld(81)
+		w.alarmCountdown = 1e6
+		PermissionService.seed(w, 1, "Direction")
+		PermissionService.seed(w, 2, "Observateur")
+		local v = vehicleOfType(w, vehicleType)
+		PersonnelService.autoCrew(w, 1, v.id)
+		local i = IncidentService.spawn(w, typeId, v.home).data
+		DispatchService.dispatch(w, 1, v.id, i.id)
+		return w, i, v
+	end
+	local w, i, v = fixture("FEU_FORET", "FPT")
+	check("ordre d'un observateur refusé", not FieldService.giveOrder(w, 2, v.id, i.id, "hold").ok)
+	check("ordre lié à la bonne alerte", not FieldService.giveOrder(w, 1, v.id, "INC-099", "hold").ok)
+	check("équipage mis en réserve", FieldService.giveOrder(w, 1, v.id, i.id, "hold").ok)
+	for _ = 1, 12 do SimulationService.step(w, 1) end
+	check("le front gagne les végétaux voisins", FireService.count(i) > 1)
+	check("la réserve ne réalise pas l'étape", i.stepIndex == 1 and i.stepProgress == 0 and i.waterUsed == 0)
+	check("un ordre incompatible est refusé", not FieldService.giveOrder(w, 1, v.id, i.id, "extricate").ok)
+	check("le FPT attaque le front avant la fin de la reconnaissance", FieldService.giveOrder(w, 1, v.id, i.id, "extinguish").ok)
+	local before = v.water
+	SimulationService.step(w, 1)
+	check("le jet puise dans la cuve", i.waterUsed > 0 and math.abs(i.waterUsed - (before - v.water)) < 0.001)
+	check("la simulation en pause fige le feu et l'eau", (function()
+		w.timeScale = 0
+		local used, heat = i.waterUsed, i.fireCells[1].heat
+		SimulationService.step(w, 5)
+		w.timeScale = 1
+		return i.waterUsed == used and i.fireCells[1].heat == heat
+	end)())
+	for _ = 1, 115 do SimulationService.step(w, 1) end
+	check("extinction du front et clôture", i.status == Constants.INCIDENT_STATUS.RESOLVED and FireService.count(i) == 0, i.status .. " / " .. tostring(i.outcome) .. " / " .. i.waterUsed .. " L")
+	local slow = {position = {x = 50, z = 50}}
+	FireService.ignite(slow, Incidents.get("FEU_VEHICULE"))
+	for _ = 1, 12 do FireService.step(slow, 1) end
+	check("combustible synthétique moins vite propagé", FireService.count(slow) == 1)
+	local burnt, burnIncident, burnVehicle = fixture("FEU_FORET", "FPT")
+	FieldService.giveOrder(burnt, 1, burnVehicle.id, burnIncident.id, "hold")
+	for _ = 1, 180 do FireService.step(burnIncident, 1) end
+	SimulationService.step(burnt, 1)
+	check("foyers consumés sans secours, intervention perdue", burnIncident.status == Constants.INCIDENT_STATUS.FAILED)
+
+	local wr, ir, vr = fixture("FEU_HABITATION", "FPT")
+	check("équipe de sauvetage engagée", FieldService.giveOrder(wr, 1, vr.id, ir.id, "rescue").ok)
+	for _ = 1, 14 do SimulationService.step(wr, 1) end
+	check("occupants sortis avant l'attaque", ir.rescued == ir.victims and ir.waterUsed == 0)
+	local wx, ix, vx = fixture("DESINCARCERATION", "FPT")
+	check("équipe de découpe équipée", FieldService.giveOrder(wx, 1, vx.id, ix.id, "extricate").ok)
+	for _ = 1, 15 do SimulationService.step(wx, 1) end
+	check("victimes effectivement désincarcérées", ix.extricated == ix.victims and ix.savedVictims == 0)
+	local wm, im, vm = fixture("ACCIDENT_VICTIME", "VSAV")
+	check("VSAV une civière, FPT aucune", HospitalService.capacity(wm, vm) == 1 and HospitalService.capacity(wm, vehicleOfType(wm, "FPT")) == 0)
+	local trips, handovers, lastStatus, firstAdmission, observedTransit, delayed, noRecall = 0, 0, vm.status, nil, false, false, false
+	local earlyAdmission = false
+	for _ = 1, 270 do
+		SimulationService.step(wm, 1)
+		if vm.status ~= lastStatus and vm.status == Constants.VEHICLE_STATUS.TRANSPORTING then
+			trips += 1
+			observedTransit = vm.patients == 1 and im.inTransit == 1 and vm.route ~= nil and #vm.route.points >= 2
+			noRecall = not DispatchService.recall(wm, 1, vm.id).ok
+			local entrance = nil
+			for _, site in ipairs(wm.cityPlan.buildings) do
+				if site.facadeName == "hopital" then entrance = site end
+			end
+			check("destination à l'entrée de l'hôpital", entrance and math.abs(vm.route.bz - entrance.z1 - 0.6) < 0.001)
+		elseif vm.status ~= lastStatus and vm.status == Constants.VEHICLE_STATUS.HANDOVER then
+			handovers += 1
+			delayed = vm.handoverAt > wm.time and im.savedVictims < handovers
+			if handovers == 1 then firstAdmission = vm.handoverAt end
+		end
+		if firstAdmission and wm.time < firstAdmission and im.savedVictims > 0 then earlyAdmission = true end
+		lastStatus = vm.status
+		if im.closedAt then break end
+	end
+	check("aucune admission anticipée", not earlyAdmission)
+	check("rotations avec une seule ambulance", trips == 2 and handovers == 2, trips)
+	check("victimes et trajet du transport visibles", observedTransit and delayed)
+	check("rappel interdit avec victime à bord", noRecall)
+	check("bilan basé sur les admissions effectives", im.savedVictims == 2 and wm.stats.savedVictims == 2 and im.outcome == "success", im.status)
+	local partial, mixed, ambulance = fixture("ACCIDENT_VICTIME", "VSAV")
+	for _ = 1, 180 do
+		SimulationService.step(partial, 1)
+		if mixed.savedVictims == 1 then break end
+	end
+	check("rappel autorisé sur la rotation à vide", DispatchService.recall(partial, 1, ambulance.id).ok)
+	for _ = 1, 100 do SimulationService.step(partial, 1) end
+	check("l'admission reste acquise lors d'un échec partiel", mixed.status == Constants.INCIDENT_STATUS.FAILED
+		and mixed.savedVictims == 1 and partial.stats.savedVictims == 1 and partial.stats.civilianLosses == 1)
+	local historic = SaveService.serialize(wm)
+	historic.fieldInventoryVersion = nil
+	historic.equipmentStock.CISAILLE = nil
+	for _, oldVehicle in ipairs(historic.vehicles) do oldVehicle.equipment.CISAILLE = nil end
+	local oldWorld = newWorld(12)
+	SaveService.deserialize(oldWorld, historic)
+	check("stock de découpe disponible après migration", oldWorld.equipmentStock.CISAILLE == Config.START_EQUIPMENT.CISAILLE)
+	local wl, il, vl = fixture("MALAISE", "VSAV")
+	vl.equipment.BRANCARD = nil
+	for _ = 1, 140 do SimulationService.step(wl, 1) end
+	check("absence de brancard : délai d'évacuation dépassé", il.status == Constants.INCIDENT_STATUS.FAILED and il.savedVictims == 0)
+end
+
 suite("Commandement")
 -- ─────────────────────────────────────────────────────────────
 local groupResult = CommandService.createGroup(world, 1, "Groupe Incendie", "fire")
@@ -516,6 +630,200 @@ check("éclairage recalculé après remise à zéro", LightingService.step(reset
 
 -- ─────────────────────────────────────────────────────────────
 print("")
+do
+	suite("Missions jouées et bilans de service")
+	local Missions = require(Catalogs:WaitForChild("Missions"))
+	local ProgressionService = require(Services:WaitForChild("ProgressionService"))
+	local EquipmentService = require(Services:WaitForChild("EquipmentService"))
+	for _, def in ipairs(Missions.list) do
+		local w = newWorld(21)
+		local actor = {UserId = 101, Name = "Direction"}
+		PermissionService.seed(w, actor.UserId, actor.Name)
+		crewAll(w, actor.UserId)
+		local function start(id)
+			w.players[actor.UserId].lastAction = -math.huge
+			return NetworkService.handle(w, actor, "start_mission", {missionId = id})
+		end
+		check(def.id .. " · identifiant réseau refusé", not start({}).ok and not start("inconnu").ok)
+		check(def.id .. " · lancement depuis la commande réseau", start(def.id).ok)
+		check(def.id .. " · pas de deuxième mission simultanée", not start(def.id).ok)
+		local mission = w.mission
+		local first = w.incidents[mission.incidentIds[1]]
+		local initial = SnapshotService.build(w)
+		check(def.id .. " · objectif secondaire à découvrir", initial.mission.objectives[2].status == "locked")
+		local fpt, ambulance, command = vehicleOfType(w, "FPT"), vehicleOfType(w, "VSAV"), vehicleOfType(w, "VPC")
+		if def.id == "eglise" then
+			check("sac de secours installé dans le fourgon", EquipmentService.install(w, actor.UserId, fpt.id, "SAC_SECOURS", 1).ok)
+		end
+		check(def.id .. " · premier départ", DispatchService.dispatch(w, actor.UserId, fpt.id, first.id).ok)
+		if def.id == "route" then
+			check("route · balisage", DispatchService.dispatch(w, actor.UserId, command.id, first.id).ok)
+			check("route · secours médical", DispatchService.dispatch(w, actor.UserId, ambulance.id, first.id).ok)
+		end
+		local secondSent, triggerTime = false, nil
+		for _ = 1, 500 do
+			SimulationService.step(w, 1)
+			local secondary = w.incidents[mission.incidentIds[2]]
+			if secondary and not triggerTime then triggerTime = w.time end
+			if secondary and not secondSent then
+				if def.id == "route" then
+					if first.evacuating and fpt.status == Constants.VEHICLE_STATUS.ON_SCENE then
+						DispatchService.recall(w, actor.UserId, fpt.id)
+					end
+					if fpt.status == Constants.VEHICLE_STATUS.AVAILABLE then
+						secondSent = DispatchService.dispatch(w, actor.UserId, fpt.id, secondary.id).ok
+					end
+				else
+					secondSent = DispatchService.dispatch(w, actor.UserId, ambulance.id, secondary.id).ok
+				end
+			end
+			if mission.status ~= "active" then break end
+		end
+		check(def.id .. " · déclenchement de terrain et arrivée de renforts", secondSent and triggerTime > 0)
+		if def.trigger == "radio" then check("forêt · horaire radio respecté", triggerTime == def.delay) end
+		check(def.id .. " · deux alertes de mission, aucun appel libre intercalé", w.spawnedIncidents == 2)
+		local snap = SnapshotService.build(w)
+		local second = w.incidents[mission.incidentIds[2]]
+		check(def.id .. " · les deux objectifs aboutissent", mission.status == "completed", tostring(first.outcome) .. " / " .. tostring(second and second.outcome))
+		check(def.id .. " · bulletin calculé", snap.progression.score > 0 and snap.progression.rating > 0)
+		check(def.id .. " · toutes les victimes transportées", w.stats.savedVictims > 0 and snap.progression.civilianLosses == 0)
+		check(def.id .. " · objectifs sérialisables", SnapshotService.isSerializable(snap) and snap.mission.objectives[2].status == "resolved")
+		local fresh = newWorld(22)
+		SaveService.deserialize(fresh, SaveService.serialize(w))
+		check(def.id .. " · réussite et score rechargés sans mission fantôme", fresh.stats["mission_" .. def.id] == 1
+			and fresh.stats.score == w.stats.score and fresh.mission == nil)
+	end
+
+	local w = newWorld(23)
+	do
+		local service = require(Services:WaitForChild("MissionService"))
+		local observer = {UserId = 44, Name = "Observateur"}
+		PermissionService.seed(w, 43, "Directrice")
+		PermissionService.seed(w, observer.UserId, observer.Name)
+		check("lancement refusé à un observateur", not NetworkService.handle(w, observer, "start_mission", {missionId = "route"}).ok)
+		local first = IncidentService.spawn(w, "MALAISE", {x = 40, z = 40}).data
+		check("mission coexiste avec un appel antérieur", service.start(w, 43, "foret").ok)
+		w.time = 35
+		service.step(w)
+		check("déclencheur retardé quand les deux places sont occupées", #w.mission.incidentIds == 1 and w.spawnedIncidents == 2)
+		IncidentService.fail(w, first, "fin de l’appel libre")
+		service.step(w)
+		check("déclencheur publié dès qu'une place se libère", #w.mission.incidentIds == 2 and w.spawnedIncidents == 3)
+		WorldService.reset(w)
+		check("nouvelle partie libère les objectifs", w.mission == nil and next(w.incidents) == nil)
+		service.start(w, 43, "eglise")
+		local untouched = w.incidents[w.mission.incidentIds[1]]
+		IncidentService.fail(w, untouched, "délai dépassé")
+		service.step(w)
+		check("échec précoce annule les objectifs non déclenchés", w.mission.status == "failed"
+			and service.snapshot(w).objectives[2].status == "cancelled")
+		WorldService.reset(w)
+	end
+	local lost = IncidentService.spawn(w, "MALAISE", {x = 20, z = 45}).data
+	IncidentService.fail(w, lost, "délai dépassé")
+	local report = ProgressionService.snapshot(w)
+	check("échec · pénalité civile séparée", report.civilianLosses == 1 and report.civilianPenalty == Config.SCORE_CIVILIAN_LOSS
+		and report.rating == 0 and report.score == -Config.SCORE_FAILURE - Config.SCORE_CIVILIAN_LOSS)
+	ProgressionService.record(w, lost)
+	check("bilan idempotent", w.stats.ratedCalls == 1)
+	for i = 1, 5 do
+		local incident = IncidentService.spawn(w, "ACCIDENT_CIRCULATION", {x = 49, z = 49}).data
+		incident.savedVictims, incident.waterUsed, incident.extricated = 2, 40, 2
+		incident.canineSearch, incident.rescued = true, 2
+		ProgressionService.arrive(w, incident, vehicleOfType(w, "FPT"))
+		ProgressionService.arrive(w, incident, vehicleOfType(w, "VSAV"))
+		ProgressionService.arrive(w, incident, {typeId = "VL_POLICE"})
+		ProgressionService.arrive(w, incident, {typeId = "VATELIER"})
+		IncidentService.resolve(w, incident, false, "bilan du test")
+	end
+	report = ProgressionService.snapshot(w)
+	for _, award in ipairs(report.awards) do
+		check("distinction attribuée · " .. award.name, award.earned and award.current == award.target)
+	end
+	check("évaluation moyenne sur tous les bilans", report.rating == 83 and #report.awards == 6)
+	local fresh = newWorld(24)
+	SaveService.deserialize(fresh, SaveService.serialize(w))
+	check("distinctions permanentes", ProgressionService.snapshot(fresh).awards[6].earned)
+	local legacy = SaveService.serialize(w)
+	legacy.stats = {resolved = 1, savedVictims = 0}
+	SaveService.deserialize(fresh, legacy)
+	local restored = ProgressionService.snapshot(fresh)
+	check("ancienne sauvegarde · bulletin neuf et parcours conservé", restored.rating == nil and restored.score == 0
+		and not restored.awards[6].earned and fresh.stats.resolved == 1)
+end
+do
+	suite("Équipages techniques et gestion du personnel")
+	local crewUtil = require(Utilities:WaitForChild("Crew"))
+	for _, typeId in ipairs({"VCH", "VLOG", "VATELIER"}) do
+		local caserne = newWorld(77)
+		PermissionService.seed(caserne, 1, "Direction")
+		local hire = PersonnelService.recruit(caserne, 1, "technician")
+		local van = VehicleService.create(caserne, typeId).data
+		local crew = PersonnelService.autoCrew(caserne, 1, van.id)
+		check(typeId .. " armé par la caserne", hire.ok and crew.ok and crewUtil.readiness(caserne, van).ok)
+		check(typeId .. " équipage protégé", not PersonnelService.transfer(caserne, 1, van.crew[1]).ok)
+	end
+	local caserne = newWorld(78)
+	PermissionService.seed(caserne, 1, "Direction")
+	local tech = PersonnelService.recruit(caserne, 1, "technician").data
+	PersonnelService.train(caserne, 1, tech.id)
+	local van = VehicleService.create(caserne, "VATELIER").data
+	PersonnelService.assign(caserne, 1, tech.id, van.id)
+	van.status = Constants.VEHICLE_STATUS.ON_SCENE
+	PersonnelService.stepFatigue(caserne, 10)
+	check("effet mesurable de la formation", math.abs(tech.fatigue - 9 * Config.FATIGUE_PER_SECOND) < 0.001)
+	local saved = SaveService.serialize(caserne)
+	local rebuilt = newWorld(79)
+	check("niveau et prix payé restaurés", SaveService.deserialize(rebuilt, saved).ok
+		and rebuilt.personnel[tech.id].level == 1 and rebuilt.personnel[tech.id].hireCost == tech.hireCost)
+	check("inflation restaurée", SnapshotService.build(rebuilt).purchase.surcharge == 30)
+	for _, p in ipairs(saved.personnel) do p.level = nil; p.hireCost = nil end
+	saved.version = "0.3.0"
+	saved.stats.purchases = nil
+	check("ancien format accepté", SaveService.deserialize(rebuilt, saved).ok
+		and rebuilt.personnel[tech.id].level == 0 and rebuilt.personnel[tech.id].hireCost == 1200
+		and SnapshotService.build(rebuilt).purchase.surcharge == 0)
+end
+
+do
+	suite("Relève du soir sur la ville construite")
+	local SceneService = require(Services:WaitForChild("SceneService"))
+	local shift = newWorld(188)
+	shift.alarmCountdown = 1e9
+	PermissionService.seed(shift, 1, "Direction")
+	local scene = SceneService.build(Config, Instance.new("Folder"))
+	local lighting = Instance.new("Lighting")
+	LightingService.apply(lighting, shift, scene)
+	SimulationService.setTimeScale(shift, 1, 4)
+	local star = scene:FindFirstChild("Ciel"):FindFirstChild("Etoile_1")
+	local moon = scene:FindFirstChild("Ciel"):FindFirstChild("Lune")
+	local lamp = scene:FindFirstChild("Mobilier"):FindFirstChild("Lampe_1"):FindFirstChild("Eclairage")
+	local windows = {}
+	for _, part in ipairs(scene:FindFirstChild("Batiments"):GetChildren()) do
+		if string.sub(part.Name, 1, 5) == "Vitre" then table.insert(windows, part) end
+	end
+	local function reach(hour)
+		local target = (hour - Config.SHIFT_START_HOUR) * Config.SHIFT_SECONDS / 24
+		while shift.time < target do
+			SimulationService.step(shift, math.min(1, (target - shift.time) / 4))
+			LightingService.step(shift, lighting, scene)
+		end
+	end
+	reach(19)
+	check("ville à 19 h en simulation accélérée", lighting.ClockTime == 19 and not lamp.Enabled and #windows > 0)
+	reach(20)
+	local twilight = moon.Transparency
+	check("lumières et ciel au crépuscule", lamp.Enabled and twilight > 0.05 and twilight < 1 and star.Transparency < 1)
+	reach(21)
+	local lit = 0
+	for _, pane in ipairs(windows) do
+		if pane.Material == Enum.Material.Neon then lit += 1 end
+	end
+	check("ville à 21 h, lune, étoiles, vitrages et lampadaires", lighting.ClockTime == 21
+		and moon.Transparency < twilight and star.Transparency < 0.2 and lamp.Enabled and lit == #windows)
+	scene:Destroy()
+end
+
 print(string.format("  Intégration : %d réussite(s), %d échec(s)", passed, failed))
 if failed > 0 then
 	error(string.format("%d test(s) d'intégration en échec", failed))

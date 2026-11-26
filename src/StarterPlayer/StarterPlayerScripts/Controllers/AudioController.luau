@@ -2,13 +2,8 @@
 --[[
 	AudioController — sons de l'interface, ambiance et sirènes.
 
-	Le client ne joue que des sons fournis avec Roblox (`rbxasset://`) : aucun
-	asset audio n'est uploadé ni redistribué. L'ambiance et la sirène sont deux
-	arrangements du même souffle continu, rejoué à des vitesses différentes.
-
-	La sirène suit l'état réel des engins : elle démarre dès qu'un véhicule est
-	engagé et s'arrête au retour. Le bouton **SON** de la barre supérieure coupe
-	tout le groupe audio, sans interrompre la simulation.
+	La sirène enregistrée accompagne les trajets prioritaires. Les annonces du
+	centre 112 sont sous-titrées et transmises par une voix française Roblox.
 ]]
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -42,7 +37,9 @@ function AudioController.new(options: any?): any
 	self.siren = nil
 	self.cueSounds = {}
 	self.sirenActive = false
-	self.sirenPhase = 1
+	self.radioCaption = ""
+	self.radioAt = -math.huge
+	self.unitStates = nil
 	self.knownAlerts = nil
 	self.engaged = 0
 	return self
@@ -91,13 +88,19 @@ function AudioController.mount(self: any): ()
 	self.ambience.Playing = true
 	self.mounted = true
 
-	-- Alternance de la sirène : une boucle légère côté client, sans réseau.
-	task.spawn(function()
-		while self.mounted do
-			task.wait(self.config.AUDIO_SIREN_PERIOD)
-			self:tickSiren()
-		end
-	end)
+	local voice = Instance.new("AudioTextToSpeech")
+	voice.Name = "Radio112"
+	voice.AutoLocalize = false
+	voice.VoiceId = self.config.RADIO_VOICE
+	voice.Volume = self.muted and 0 or 0.65
+	voice.Parent = self.folder
+	local output = Instance.new("AudioDeviceOutput")
+	output.Parent = self.folder
+	local wire = Instance.new("Wire")
+	wire.SourceInstance = voice
+	wire.TargetInstance = output
+	wire.Parent = self.folder
+	self.voice = voice
 end
 
 function AudioController.getCue(self: any, cue: string): any?
@@ -139,7 +142,6 @@ end
 
 function AudioController.startSiren(self: any): ()
 	self.sirenActive = true
-	self.sirenPhase = 1
 	if self.muted then
 		return
 	end
@@ -148,11 +150,10 @@ function AudioController.startSiren(self: any): ()
 			"Sirene",
 			self.config.AUDIO_SIREN,
 			self.config.AUDIO_SIREN_VOLUME,
-			self.config.AUDIO_SIREN_SPEEDS[1],
+			1,
 			true
 		)
 	end
-	self.siren.PlaybackSpeed = self.config.AUDIO_SIREN_SPEEDS[1]
 	self.siren.Playing = true
 end
 
@@ -163,20 +164,25 @@ function AudioController.stopSiren(self: any): ()
 	end
 end
 
--- Alterne les deux tons de la sirène. Appelé par la boucle de `mount`.
-function AudioController.tickSiren(self: any): number?
-	if not self.sirenActive or self.muted or not self.siren then
-		return nil
-	end
-	self.sirenPhase = self.sirenPhase == 1 and 2 or 1
-	self.siren.PlaybackSpeed = self.config.AUDIO_SIREN_SPEEDS[self.sirenPhase]
-	return self.sirenPhase
+-- Transmet un message du centre, avec sous-titre immédiat même en mode muet.
+function AudioController.announce(self: any, message: string): ()
+	self.radioCaption = message
+	if self.muted or os.clock() - self.radioAt < 10 then return end
+	if not self.mounted then self:mount() end
+	self.radioAt = os.clock()
+	self.voice.Text = message
+	self.voice.TimePosition = 0
+	self.voice:Play()
 end
 
 function AudioController.setMuted(self: any, muted: boolean): boolean
 	self.muted = muted == true
 	if self.group then
 		self.group.Volume = self.muted and 0 or 1
+	end
+	if self.voice then
+		self.voice.Volume = self.muted and 0 or 0.65
+		if self.muted then self.voice:Pause() end
 	end
 	if self.muted then
 		self:stopSiren()
@@ -200,28 +206,40 @@ function AudioController.update(self: any, snapshot: any): ()
 	end
 
 	local current = {}
-	local newAlert = false
+	local radioMessage = nil
 	for _, incident in ipairs(snapshot.incidents or {}) do
 		if incident.status == Constants.INCIDENT_STATUS.PENDING
 			or incident.status == Constants.INCIDENT_STATUS.ACTIVE then
 			current[incident.id] = true
 			if self.knownAlerts and not self.knownAlerts[incident.id] then
-				newAlert = true
+				radioMessage = "Centre 112. Nouvelle intervention. " .. (incident.title or incident.name or "Consultez la fiche de départ.")
 			end
 		end
 	end
-	if self.knownAlerts and newAlert then
+	if radioMessage then
 		self:play("alert")
 	end
 	self.knownAlerts = current
 
 	local engaged = 0
+	local units = {}
 	for _, vehicle in ipairs(snapshot.vehicles or {}) do
-		if vehicle.status == Constants.VEHICLE_STATUS.DISPATCHED
-			or vehicle.status == Constants.VEHICLE_STATUS.ON_SCENE then
+		units[vehicle.id] = vehicle.status
+		if vehicle.status == Constants.VEHICLE_STATUS.DISPATCHED or vehicle.status == Constants.VEHICLE_STATUS.TRANSPORTING then
 			engaged += 1
 		end
+		local previous = self.unitStates and self.unitStates[vehicle.id]
+		if previous and previous ~= vehicle.status and not radioMessage then
+			local unit = vehicle.callsign or "Équipage"
+			if vehicle.status == Constants.VEHICLE_STATUS.ON_SCENE then
+				radioMessage = unit .. " sur les lieux."
+			elseif vehicle.status == Constants.VEHICLE_STATUS.DISPATCHED then
+				radioMessage = unit .. " en départ. Bien reçu."
+			end
+		end
 	end
+	self.unitStates = units
+	if radioMessage then self:announce(radioMessage) end
 	self.engaged = engaged
 	if engaged > 0 and not self.sirenActive then
 		self:startSiren()
@@ -240,6 +258,10 @@ function AudioController.unmount(self: any): ()
 	self.group = nil
 	self.ambience = nil
 	self.siren = nil
+	self.voice = nil
+	self.knownAlerts = nil
+	self.unitStates = nil
+	self.engaged = 0
 	table.clear(self.cueSounds)
 end
 

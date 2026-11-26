@@ -389,7 +389,7 @@ check("qualifications : aucun doublon", qualificationErrors == 0)
 -- ─────────────────────────────────────────────────────────────
 suite("Réglages et données de départ")
 -- ─────────────────────────────────────────────────────────────
-check("version renseignée", Config.VERSION == "0.3.0")
+check("version renseignée", Config.VERSION == "0.4.0")
 check("budget de départ positif", Config.START_BUDGET > 0)
 check("cadence de simulation", Config.TICK_RATE > 0 and Config.SNAPSHOT_RATE > 0)
 check("plafond d'interventions", Config.MAX_ACTIVE_INCIDENTS >= 1)
@@ -427,10 +427,8 @@ for _, tree in ipairs(cityPlan.trees) do
 end
 check("ceinture boisée plantée", beltTrees > 20, beltTrees)
 
-check("sons fournis par le client", string.sub(Config.AUDIO_AMBIENCE, 1, 11) == "rbxasset://"
-	and string.sub(Config.AUDIO_SIREN, 1, 11) == "rbxasset://")
-check("sirène à deux tons", #Config.AUDIO_SIREN_SPEEDS == 2
-	and Config.AUDIO_SIREN_SPEEDS[1] ~= Config.AUDIO_SIREN_SPEEDS[2])
+check("ambiance fournie par le client", string.sub(Config.AUDIO_AMBIENCE, 1, 11) == "rbxasset://")
+check("enregistrement de sirène référencé", Config.AUDIO_SIREN == "rbxassetid://389665768")
 check("ciel procédural configuré", Config.SKY_RADIUS > 0 and Config.SKY_STARS > 0)
 
 -- ─────────────────────────────────────────────────────────────

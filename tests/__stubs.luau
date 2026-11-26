@@ -197,6 +197,7 @@ local GUI_CLASSES = {
 }
 
 local SIGNAL_NAMES = {
+	Destroying = true,
 	MouseButton1Click = true,
 	MouseButton1Down = true,
 	MouseButton1Up = true,
@@ -244,6 +245,27 @@ local DEFAULTS = {
 
 local InstanceMT = {}
 local methods = {}
+
+function methods:GetGuiObjectsAtPosition(_x, _y)
+	return {}
+end
+
+-- Double de la synthèse vocale ; mémorise les commandes de lecture.
+function methods:Play()
+	assert(self.ClassName == "AudioTextToSpeech")
+	self.IsPlaying = true
+end
+
+function methods:Pause()
+	assert(self.ClassName == "AudioTextToSpeech")
+	self.IsPlaying = false
+end
+
+-- Mémorise la pose du modèle pour les assertions de sens et de mouvement.
+function methods:PivotTo(target)
+	assert(self.ClassName == "Model")
+	self.WorldPivot = target
+end
 
 function methods:GetChildren()
 	local copy = {}
@@ -497,6 +519,9 @@ local tweenService = {
 }
 
 local userInputService = {
+	GetFocusedTextBox = function() return nil end,
+	GetMouseLocation = function() return Vector2.new(500,300) end,
+	WindowFocusReleased = newSignal(),
 	InputBegan = newSignal(),
 	InputChanged = newSignal(),
 	InputEnded = newSignal(),

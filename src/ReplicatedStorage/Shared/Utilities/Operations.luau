@@ -57,6 +57,7 @@ function Operations.release(world: any, vehicle: any): ()
 	if vehicle.status == Constants.VEHICLE_STATUS.MAINTENANCE then
 		return
 	end
+	vehicle.fieldOrder, vehicle.fieldActivity = nil, nil
 	vehicle.incidentId = nil
 	local distance = MathX.distance(vehicle.position.x, vehicle.position.z, vehicle.home.x, vehicle.home.z)
 	if distance <= world.config.ARRIVAL_RADIUS then
@@ -73,6 +74,8 @@ end
 -- Le véhicule est arrivé au poste : disponible, équipage conservé.
 function Operations.arriveHome(world: any, vehicle: any): ()
 	vehicle.status = Constants.VEHICLE_STATUS.AVAILABLE
+	local definition = world.catalogs.vehicles.get(vehicle.typeId)
+	vehicle.water = definition and definition.waterCapacity or 0
 	vehicle.route = nil
 	vehicle.incidentId = nil
 	vehicle.position = { x = vehicle.home.x, z = vehicle.home.z }

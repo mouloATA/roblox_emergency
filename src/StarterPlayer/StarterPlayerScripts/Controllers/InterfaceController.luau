@@ -25,6 +25,7 @@ local VALID_TABS = {
 	command = true,
 	budget = true,
 	roles = true,
+	missions = true,
 }
 
 local function emptySnapshot(): any

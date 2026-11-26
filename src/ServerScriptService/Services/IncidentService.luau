@@ -22,6 +22,11 @@ local Services = ServerScript:WaitForChild("Services")
 local BudgetService = require(Services:WaitForChild("BudgetService"))
 local CommandService = require(Services:WaitForChild("CommandService"))
 
+local FieldService = require(Services:WaitForChild("FieldService"))
+local FireService = require(Services:WaitForChild("FireService"))
+local HospitalService = require(Services:WaitForChild("HospitalService"))
+local ProgressionService = require(Services:WaitForChild("ProgressionService"))
+
 local IncidentService = {}
 
 function IncidentService.zoneLabel(x: number, z: number): string
@@ -87,6 +92,8 @@ function IncidentService.spawn(world: any, typeId: string, position: any?): any
 		closedAt = nil,
 		outcome = nil,
 	}
+	incident.inTransit = 0
+	FieldService.prepare(incident, typeDef)
 	world.nextIncidentId += 1
 	world.incidents[incident.id] = incident
 	world.spawnedIncidents += 1
@@ -138,6 +145,7 @@ function IncidentService.releaseVehicles(world: any, incident: any): ()
 	for vehicleId in pairs(incident.assigned) do
 		local vehicle = world.vehicles[vehicleId]
 		if vehicle and vehicle.incidentId == incident.id then
+			vehicle.patients, vehicle.handoverAt = 0, nil
 			vehicle.incidentId = nil
 			Operations.release(world, vehicle)
 		end
@@ -148,6 +156,7 @@ end
 
 -- Échec : pénalité budgétaire et libération des moyens.
 function IncidentService.fail(world: any, incident: any, reason: string): ()
+	if incident.closedAt ~= nil then return end
 	local typeDef = world.catalogs.incidents.get(incident.typeId)
 	if not typeDef then
 		return
@@ -157,6 +166,7 @@ function IncidentService.fail(world: any, incident: any, reason: string): ()
 	incident.status = Constants.INCIDENT_STATUS.FAILED
 	incident.outcome = reason
 	incident.closedAt = world.time
+	ProgressionService.record(world, incident)
 	IncidentService.releaseVehicles(world, incident)
 	Operations.log(world, Constants.LOG.FAILURE, string.format(
 		"%s échouée : %s (−%d €).",
@@ -168,26 +178,26 @@ end
 
 -- Réussite (pleine ou dégradée).
 function IncidentService.resolve(world: any, incident: any, degraded: boolean, reason: string): ()
+	if incident.closedAt ~= nil then return end
 	local typeDef = world.catalogs.incidents.get(incident.typeId)
 	if not typeDef then
 		return
 	end
 	local factor = degraded and 0.5 or 1
 	local amount = math.floor(typeDef.reward * factor)
-	local saved = degraded and math.floor(incident.victims / 2) or incident.victims
+	local saved = incident.savedVictims
 
 	BudgetService.earn(world, amount, "Intervention réussie : " .. typeDef.name)
-	world.stats.savedVictims += saved
 	if degraded then
 		world.stats.degraded += 1
 	else
 		world.stats.resolved += 1
 	end
 
-	incident.savedVictims = saved
 	incident.status = Constants.INCIDENT_STATUS.RESOLVED
 	incident.outcome = degraded and "degraded" or "success"
 	incident.closedAt = world.time
+	ProgressionService.record(world, incident)
 	IncidentService.releaseVehicles(world, incident)
 	Operations.log(world, Constants.LOG.SUCCESS, string.format(
 		"%s terminée (%s) : +%d €, %d victime(s) prise(s) en charge.",
@@ -223,6 +233,16 @@ function IncidentService.stepIncident(world: any, incident: any, dt: number): ()
 		return
 	end
 
+	if incident.closedAt ~= nil then return end
+	if not incident.evacuating and #incident.fireCells > 0 then
+		FireService.step(incident, dt)
+		local burning, spent = FireService.count(incident)
+		if burning == 0 and spent == #incident.fireCells then
+			IncidentService.fail(world, incident, "propagation à tous les foyers")
+			return
+		end
+	end
+
 	if incident.status == Constants.INCIDENT_STATUS.PENDING then
 		if world.time > incident.deadline then
 			IncidentService.fail(world, incident, "délai de prise en charge dépassé")
@@ -231,6 +251,25 @@ function IncidentService.stepIncident(world: any, incident: any, dt: number): ()
 	end
 
 	if incident.status ~= Constants.INCIDENT_STATUS.ACTIVE then
+		return
+	end
+
+	if incident.evacuating then
+		if incident.savedVictims == incident.victims then
+			IncidentService.resolve(world, incident, incident.degraded, "transmission des victimes aux urgences")
+			return
+		end
+		local transportActive = HospitalService.load(world, incident)
+		for id in pairs(incident.assigned) do
+			local vehicle = world.vehicles[id]
+			if vehicle and vehicle.status == Constants.VEHICLE_STATUS.DISPATCHED and HospitalService.capacity(world, vehicle) > 0 then
+				transportActive = true
+			end
+		end
+		incident.underpoweredFor = if transportActive then 0 else incident.underpoweredFor + dt
+		if incident.underpoweredFor > world.config.UNDERPOWER_FAIL_SECONDS then
+			IncidentService.fail(world, incident, "victimes en attente de transport sanitaire")
+		end
 		return
 	end
 
@@ -258,9 +297,27 @@ function IncidentService.stepIncident(world: any, incident: any, dt: number): ()
 
 	-- Tous les moyens arrivent-ils à couvrir le besoin de l'étape courante ?
 	local step = typeDef.steps[incident.stepIndex]
-	local power = Crew.totalPower(world, vehicles)
+	table.sort(vehicles, function(a, b) return a.id < b.id end)
+	local support, working, fraction, anyWork = FieldService.work(world, incident, vehicles, step, dt)
+	local power = Crew.totalPower(world, support)
 	local bonus = CommandService.sectorBonus(world, incident)
 	local multiplier = 1 + bonus
+
+	if step and fraction >= 0 then
+		if fraction >= 1 then
+			incident.stepIndex += 1
+			incident.stepProgress, incident.underpoweredFor = 0, 0
+		elseif working then
+			incident.stepProgress = fraction * step.seconds
+			incident.underpoweredFor = 0
+		else
+			incident.underpoweredFor = if anyWork then 0 else incident.underpoweredFor + dt
+			if incident.underpoweredFor > world.config.UNDERPOWER_FAIL_SECONDS then
+				IncidentService.fail(world, incident, "aucune équipe opérationnelle pour « " .. step.label .. " »")
+			end
+		end
+		return
+	end
 
 	if step then
 		local met, ratio = coverage(power, step.requires, multiplier)
@@ -273,7 +330,7 @@ function IncidentService.stepIncident(world: any, incident: any, dt: number): ()
 				incident.stepProgress = 0
 			end
 		else
-			incident.underpoweredFor += dt
+			incident.underpoweredFor = if anyWork then 0 else incident.underpoweredFor + dt
 			if incident.underpoweredFor > world.config.UNDERPOWER_FAIL_SECONDS then
 				IncidentService.fail(world, incident, "moyens insuffisants pour l'étape « " .. step.label .. " »")
 				return
@@ -296,19 +353,28 @@ function IncidentService.stepIncident(world: any, incident: any, dt: number): ()
 	local equipmentOk, missingEquipment = Crew.hasRequiredEquipment(world, incident, vehicles)
 	local qualificationsOk, missingQualifications = Crew.hasRequiredQualifications(world, incident, vehicles)
 
-	if equipmentOk and qualificationsOk then
+	local _, damage = FireService.count(incident)
+	local degraded = not equipmentOk or not qualificationsOk or damage > 0
+	if incident.victims > 0 then
+		incident.evacuating, incident.degraded = true, degraded
+		HospitalService.load(world, incident)
+		return
+	end
+
+	if not degraded then
 		IncidentService.resolve(world, incident, false, "moyens complets" .. (bonus > 0 and ", secteur coordonné" or ""))
 		return
 	end
 
 	local missing = {}
+	if damage > 0 then table.insert(missing, "zone brûlée") end
 	for _, equipmentId in ipairs(missingEquipment) do
 		table.insert(missing, world.catalogs.equipment.label(equipmentId))
 	end
 	for _, qualificationId in ipairs(missingQualifications) do
 		table.insert(missing, world.catalogs.qualifications.label(qualificationId))
 	end
-	IncidentService.resolve(world, incident, true, "succès dégradé, manque : " .. table.concat(missing, ", "))
+	IncidentService.resolve(world, incident, true, "bilan dégradé : " .. table.concat(missing, ", "))
 end
 
 function IncidentService.step(world: any, dt: number): ()

@@ -20,8 +20,8 @@ l'état reçu.
 | --- | --- |
 | Budget | 25 000 € |
 | Flotte | 1 FPT (incendie), 1 VSAV (secours), 1 VPC (commandement) |
-| Effectif | 12 agents nommés, qualifications et grades variés |
-| Stock | 6 ARI, 6 extincteurs, 6 tuyaux, 3 défibrillateurs, 4 sacs de secours, 2 brancards, 6 radios, 1 PC mobile, 4 balises, 2 cordes |
+| Effectif | 13 agents, dont un technicien conducteur habilité pour les VCH, VLOG et VATELIER |
+| Stock | 6 ARI, 6 extincteurs, 6 tuyaux, 3 défibrillateurs, 4 sacs de secours, 2 brancards, 6 radios, 1 PC mobile, 4 balises, 2 cordes, 2 cisailles, 1 écarteur |
 | Poste du premier joueur | Direction |
 
 Le détail du personnel est dans `WorldService.startingPersonnel`. Les
@@ -119,7 +119,13 @@ puissance = somme des capabilities du type
 Le bonus de secteur vaut **+10 %** si un secteur couvre l'intervention et
 qu'un engin de son groupe y est réellement sur place.
 
-Pour l'étape courante, chaque capacité est comparée à son besoin. Si toutes
+Dans **Interventions**, sélectionnez l'incident et un engin sur place. L'ordre **Automatique** suit les étapes. Pour agir en parallèle, affectez un engin à l'extinction, au sauvetage ou à la désincarcération pendant que les autres poursuivent la reconnaissance ou la protection. **Réserve** suspend le travail de cette équipe. La découpe exige une cisaille ou un écarteur.
+
+Les foyers transmettent leur chaleur aux cellules voisines. Le bois, les végétaux et les matières synthétiques ont des seuils d'inflammation et des réserves de combustible distincts. Un équipage incendie puise dans la cuve de son engin et traite un foyer à la fois. L'onglet indique les foyers actifs, les zones brûlées et l'eau appliquée. La cuve se remplit au retour au poste.
+
+Après la prise en charge sur place, un VSAV ou une ambulance transporte une victime. L'UMH et le VSS peuvent en transporter deux si deux brancards sont installés. L'engin suit la route vers l'entrée de l'hôpital. Après huit secondes de transmission, l'admission entre au bilan. Une ambulance repart chercher les victimes suivantes tant que des personnes attendent. Le rappel redevient disponible sur le trajet à vide.
+
+Pour une étape de soutien, chaque capacité est comparée à son besoin. Si toutes
 sont couvertes, la progression avance à la vitesse
 `0,6 + 0,4 × ratio` (ratio minimal de couverture, plafonné à 1). Sinon
 `underpoweredFor` augmente.
@@ -129,11 +135,12 @@ sont couvertes, la progression avance à la vitesse
 | Situation | Résultat |
 | --- | --- |
 | Toutes les étapes terminées, moyens globaux couverts, matériel et qualifications présents | **Succès complet** : récompense pleine, toutes les victimes prises en charge |
-| Étapes terminées mais matériel ou qualification manquant | **Succès dégradé** : 50 % de la récompense, moitié des victimes |
+| Matériel ou qualification manquant, ou combustible entièrement consumé dans une partie du périmètre | **Succès dégradé** avec 50 % de la récompense et le nombre réel de victimes admises |
 | Date limite dépassée avant le premier engagement | **Échec** : pénalité |
 | Aucun véhicule engagé (plus rien d'assigné) pendant 60 s | **Échec** : « aucun moyen resté sur place » |
 | Étape non couverte pendant 60 s | **Échec** : moyens insuffisants pour l'étape |
 | Moyens globaux insuffisants après les étapes | **Échec** |
+| Toutes les cellules consumées, ou victimes laissées sans transport pendant plus de 60 s | **Échec**, les admissions déjà réalisées figurent au bilan |
 
 Un échec libère tous les véhicules engagés, applique la pénalité (le budget
 peut devenir négatif : c'est un état de jeu assumé) et alimente
@@ -147,14 +154,23 @@ peut devenir négatif : c'est un état de jeu assumé) et alimente
 | Mobilisation | coût du type de véhicule, **non remboursé** |
 | Réussite | `reward` du catalogue, ou 50 % si dégradé |
 | Échec | `penalty` du catalogue, appliquée même sans solde suffisant |
-| Achat | prix du catalogue, refusé si parc complet (40) ou solde insuffisant ; remboursé si la création échoue |
+| Achat d’engin ou recrutement | Tarif de base + 30 € pour chaque acquisition antérieure de la caserne |
+| Cession de personnel | 50 % du prix payé, pour un membre sans affectation |
+| Formation | 500 €, 1 000 € et 1 500 € pour les niveaux 1, 2 et 3. Chaque niveau réduit la fatigue en intervention de 10 % |
 | Réparation | `12 € × points manquants`, immobilisation `1,5 s × points manquants` |
 
 Chaque mouvement est enregistré dans `world.transactions` (120 dernières) et
-les opérations d'argent apparaissent dans « Dernières opérations » du panneau
-Budget. `spent` et `earned` sont cumulés dans `stats`.
+les opérations d'argent apparaissent dans « Dernières opérations » de l’onglet **Finances** du panneau **Achats et finances**. `spent` et `earned` sont cumulés dans `stats`.
+
+Dans **Caserne → Achats et finances**, ouvrez **Acheter un engin** puis le service voulu. Chaque offre indique le prix courant, les places et l’équipage requis. Depuis une flotte filtrée, le bouton **Acheter un engin** ouvre directement le même service.
+
+Le catalogue affiche le responsable des achats et le temps restant. La Direction et le Commandement se partagent les tours. Une transaction réussie, le bouton **Passer mon tour** ou l’expiration des 30 secondes donne la main au poste suivant. Un responsable seul peut acheter en continu.
+
+Dans **Personnel → Recruter**, choisissez un service et consultez les qualifications et le prix de chaque profil. **Effectif** conserve le service sélectionné. Ouvrez la fiche d’un agent pour l’affecter à un engin admissible, le former ou le transférer à un autre centre. Le VCH demande trois personnes et le VLOG deux. L’option d’équipage automatique tient compte de la qualification technique des recrues.
 
 ## 8. Matériel
+
+Dans **Matériel**, choisissez l’engin destinataire. **Stock** classe les références par usage et permet leur installation. **À bord** affiche la charge, les emplacements utilisés et les actions de dépose.
 
 Le stock est global (`world.equipmentStock`) et le matériel installé appartient
 au véhicule. Installer déplace le stock vers l'engin ; retirer fait l'inverse.
@@ -200,7 +216,7 @@ le groupe n'a pas d'engin réellement sur les lieux.
 | Rôle | Actions | Périmètre |
 | --- | --- | --- |
 | **Direction** | toutes, y compris budget, achats, rôles, sauvegarde | tous services |
-| **Commandement** | voir, engager, rappeler, affecter, équiper, réparer, commander | tous services |
+| **Commandement** | voir, engager, rappeler, affecter, équiper, réparer, commander, acheter à son tour | tous services |
 | **Incendie** | voir, engager, rappeler, affecter, équiper | incendie |
 | **Secours** | voir, engager, rappeler, affecter, équiper | secours |
 | **Police** | voir, engager, rappeler, affecter, équiper | police |
@@ -224,10 +240,25 @@ Incendie ne peut pas engager un VSAV, même en forgeant la requête.
 - le journal annonce la relève ;
 - les interventions en cours continuent d'évoluer.
 
-Les indicateurs disponibles dans le snapshot sont : interventions résolues,
-dégradées, échouées, victimes prises en charge, dépenses, recettes, budget.
-Il n'y a pas encore de note de fin de service ni de progression de carrière :
-ces éléments relèvent des phases suivantes.
+Le bulletin de l’onglet **Missions** affiche un score et la moyenne des
+évaluations sur 100. Par degré de gravité, un succès complet rapporte
+150 points, un succès dégradé 75, et un échec coûte 60. Une admission aux
+urgences rapporte 40 points. Chaque victime qui reste sans admission à la
+clôture coûte 100 points. Une première arrivée après la moitié du délai
+réduit l’évaluation de 10 points. Le score, les missions gagnées et les
+distinctions acquises sont conservés dans la sauvegarde.
+
+La direction et le commandement lancent un scénario dans **Missions** (touche
+**8**). Le parvis de l’église, le carrefour central et la forêt proposent
+chacun deux objectifs. Un clic sur un objectif révélé ouvre l’intervention à
+engager. Les alertes libres reprennent une fois le scénario terminé. Le joueur
+peut rejouer chaque mission avec le parc et les équipes de son choix.
+
+Les six distinctions reprennent les catégories du superviseur d’EM4. Les
+seuils sont propres à ERS et figurent dans l’onglet **Missions**. Pour le
+sauvetage cynophile, recrutez un maître-chien, affectez-le à un équipage qui
+effectue le sauvetage puis évacuez les victimes. La médaille d’or nationale
+réunit les cinq spécialités. [Catégories dans les dialogues de référence](https://github.com/djchill1/Los_Angeles_Mod_v2.1_-_DJ/blob/d44fe5cfcd6c9c1176726f163a143198a8f2f6c8/Lang/en/supervaward.xml).
 
 ## 13. Caméra, temps et mini-carte
 
@@ -256,15 +287,12 @@ associé et braque la caméra sur sa position.
 
 ## 14. Commandes
 
+Le cadenas **HUD** ouvre la personnalisation. Faites glisser un panneau visible pour le déplacer, puis sa poignée diagonale pour ajuster son échelle. Carte, journal, navigation, radio, barre de commandes, fiche ouverte et notifications disposent de leurs propres réglages. La barre de commandes se déplace en un seul bloc. **Verrouiller** termine les réglages et les enregistre pour le joueur. **Réinitialiser** retrouve la disposition automatique. En Studio, si le DataStore est inaccessible, un message précise que la disposition reste disponible uniquement pendant la session.
+
 Voir [README.md](README.md#commandes-en-jeu). Les raccourcis ne modifient que
 l'état local ou envoient une intention déjà autorisée ; `S` est refusé côté
 client **et** côté serveur pour un poste sans droit de sauvegarde.
 
-## 15. Ce qui n'est pas encore implémenté
+## 15. Ville et transmissions
 
-- Modèles 3D détaillés des engins et des personnages, circulation et piétons
-  (Phase 3 : la ville est une grille déterministe générée en code).
-- Carrière, grades évolutifs, progression de statistiques.
-- Météo, cycles jour/nuit visuels, foule, blessés individuels.
-- Notes de fin de service et classements.
-- Publication : aucune.
+Huit voitures circulent sur la chaussée et huit piétons empruntent les trottoirs. La circulation suit la vitesse de simulation. Le crépuscule commence à 19 h, les lampadaires s’allument à 20 h et la pleine nuit arrive à 21 h. La radio sous-titrée annonce les départs, les arrivées et les nouvelles urgences. Le bouton **SON** coupe aussi la voix.

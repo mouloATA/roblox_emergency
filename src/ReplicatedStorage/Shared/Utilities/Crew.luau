@@ -24,6 +24,9 @@ function Crew.serviceCompatible(person: any, typeDef: any): boolean
 	if person.service == typeDef.service then
 		return true
 	end
+	if person.qualifications.TECHNICIEN and table.find(typeDef.qualifications, "TECHNICIEN") then
+		return true
+	end
 	if person.qualifications.COS then
 		return true
 	end

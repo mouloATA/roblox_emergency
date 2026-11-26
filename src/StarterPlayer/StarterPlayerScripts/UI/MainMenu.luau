@@ -173,7 +173,7 @@ function MainMenu.create(parent: any, context: any): any
 		TextColor3 = Theme.colors.textMuted,
 	})
 	local controls = Widgets.label(side, "Commandes",
-		"1–7 : panneaux\nM : ce menu\nFlèches : déplacer la carte\nR : recentrer la carte\nS : sauvegarder",
+		"1–7 : groupes ou panneaux\n8 : missions · M : menu\nFlèches : déplacer la caméra\nR : recentrer\nCtrl+S : sauvegarder",
 		{
 			Position = UDim2.fromOffset(0, 244),
 			Size = UDim2.new(1, 0, 0, 96),
@@ -303,7 +303,7 @@ function MainMenu.create(parent: any, context: any): any
 		for roleId, button in pairs(roleButtons) do
 			local holder = nil
 			for _, player in ipairs(snapshot.players or {}) do
-				if player.role == roleId then
+				if player.connected ~= false and player.role == roleId then
 					holder = player
 				end
 			end

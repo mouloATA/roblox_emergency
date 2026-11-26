@@ -149,6 +149,17 @@ local controller = InterfaceController.new({ player = player, catalogs = catalog
 -- Même montage que `Bootstrap.client` : caméra et scène 3D avant l'interface.
 local camera = CameraController.new({ camera = stubs.camera })
 camera:mount()
+do
+	stubs.camera.CameraType = Enum.CameraType.Custom
+	camera:syncCamera(stubs.camera)
+	check("vue tactique restaurée après apparition du personnage", stubs.camera.CameraType == Enum.CameraType.Scriptable
+		and stubs.camera.FieldOfView == Config.CAMERA_FOV)
+	local replacement = Instance.new("Camera")
+	camera:syncCamera(replacement)
+	check("remplacement de la caméra Roblox pris en charge", replacement.CameraType == Enum.CameraType.Scriptable
+		and replacement.FieldOfView == Config.CAMERA_FOV)
+	camera:syncCamera(stubs.camera)
+end
 local SceneView = require(ERSClient:WaitForChild("UI"):WaitForChild("SceneView"))
 local scene = SceneView.new({ workspace = game:GetService("Workspace") })
 
@@ -176,20 +187,21 @@ network:requestSnapshot()
 suite("Coque et premier snapshot")
 -- ─────────────────────────────────────────────────────────────
 check("ScreenGui créé", app.gui.Name == "ERS" and app.gui.Parent == playerGui)
+check("en-tête sous les commandes natives de Roblox", app.gui.ScreenInsets == Enum.ScreenInsets.CoreUISafeInsets)
 check("racine plein écran", app.gui:FindFirstChild("Racine") ~= nil)
-check("sept onglets", (function()
+check("huit onglets", (function()
 	local count = 0
 	for _ in pairs(app.tabs) do
 		count += 1
 	end
-	return count == 7
+	return count == 8
 end)())
-check("sept panneaux", (function()
+check("huit panneaux", (function()
 	local count = 0
 	for _ in pairs(app.panels) do
 		count += 1
 	end
-	return count == 7
+	return count == 8
 end)())
 check("premier joueur = direction", world.players[player.UserId].role == Constants.ROLE.DIRECTION)
 check("rôle lu depuis le snapshot", controller:role() == Constants.ROLE.DIRECTION)
@@ -429,12 +441,76 @@ click(app.tabs.budget)
 check("onglet budget actif", controller.state.tab == "budget")
 check("solde affiché en euros", string.find(app.panels.budget.root:FindFirstChild("Solde").Text, "€", 1, true) ~= nil)
 
+local function use(panel, name)
+	local node = Widgets.find(panel, name)
+	local ancestor = node
+	while ancestor do
+		assert(ancestor.Visible ~= false, name .. " masqué dans " .. ancestor.Name)
+		if ancestor == panel then break end
+		ancestor = ancestor.Parent
+	end
+	click(node)
+end
+
+local function pricesInOrder(list, descending)
+	local displayed = {}
+	for _, row in ipairs(list:GetChildren()) do
+		local label = row:FindFirstChild("Cout")
+		if label then
+			local digits = label.Text:gsub("[^0-9]", "")
+			displayed[row.LayoutOrder] = { price = assert(tonumber(digits)), id = row.Name }
+		end
+	end
+	for i = 2, #displayed do
+		local a, b = displayed[i - 1], displayed[i]
+		if a.price == b.price and a.id >= b.id then return false end
+		if descending and a.price < b.price or not descending and a.price > b.price then return false end
+	end
+	return #displayed >= 2
+end
+
+do
+	local shop = app.panels.budget
+	local catalogue = Widgets.find(shop.root, "Catalogue")
+	check("véhicules du moins cher au plus cher à l’ouverture", pricesInOrder(catalogue, false))
+	catalogue.CanvasPosition = Vector2.new(0, 180)
+	use(shop.root, "TriPrix_desc")
+	check("prix décroissants et retour au début du catalogue", pricesInOrder(catalogue, true) and catalogue.CanvasPosition.Y == 0)
+	for _, service in ipairs({"fire","medical","police","technical","command","logistics"}) do
+		use(shop.root, "ServiceAchat_" .. service)
+		local exact = true
+		for _, def in ipairs(Vehicles.list) do
+			if (shop.rows.entries[def.id] ~= nil) ~= (service == def.service) then exact = false end
+		end
+		check("catalogue exact du service " .. service, exact)
+		check("tri décroissant conservé dans le service " .. service, pricesInOrder(catalogue, true))
+	end
+	controller:openCategory("medical")
+	use(app.panels.vehicles.root, "OuvrirCatalogue")
+	check("achat depuis une flotte filtrée", controller.state.tab == "budget" and shop.rows.entries.VSAV and not shop.rows.entries.FPT)
+	local originalBudget = world.budget
+	world.budget = 0
+	controller:applySnapshot(SnapshotService.build(world))
+	check("motif d’achat affiché si le solde est insuffisant", not shop.rows.entries.VSAV.buy.Active
+		and shop.rows.entries.VSAV.buy.Text == "Solde insuffisant")
+	world.budget = originalBudget
+	controller:applySnapshot(SnapshotService.build(world))
+	local row = shop.rows.entries.VSAV.instance
+	controller:applySnapshot(SnapshotService.build(world))
+	check("filtre et ligne conservés après un snapshot", shop.rows.entries.VSAV.instance == row and not shop.rows.entries.FPT)
+	check("prix décroissants après actualisation", pricesInOrder(catalogue, true))
+	use(shop.root, "TriPrix_asc")
+	check("retour aux prix croissants dans le même service", pricesInOrder(catalogue, false) and not shop.rows.entries.FPT)
+	controller:openCategory("all")
+	use(app.panels.vehicles.root, "OuvrirCatalogue")
+end
+
 local beforeBuy = world.budget
 local fleetBefore = 0
 for _ in pairs(world.vehicles) do
 	fleetBefore += 1
 end
-click(app.panels.budget.buyButtons["VSAV"])
+click(app.panels.budget.rows.entries.VSAV.buy)
 check("achat réellement débité", world.budget == beforeBuy - Vehicles.get("VSAV").cost, world.budget)
 check("flotte agrandie", (function()
 	local count = 0
@@ -446,7 +522,11 @@ end)())
 check("action buy_vehicle envoyée", lastAction() == "buy_vehicle")
 
 world.saveRequested = false
-click(app.panels.budget.saveButton)
+use(app.panels.budget.root, "VueBudget_ledger")
+check("finances affichées seules", Widgets.find(app.panels.budget.root, "Corps").Visible
+	and not Widgets.find(app.panels.budget.root, "Catalogue").Visible)
+use(app.panels.budget.root, "Action_save")
+use(app.panels.budget.root, "VueBudget_shop")
 check("sauvegarde demandée au serveur", world.saveRequested == true)
 check("action save envoyée", lastAction() == "save")
 
@@ -459,9 +539,9 @@ check("changement de poste via le panneau", world.players[player.UserId].role ==
 check("rôle mis à jour dans le contrôleur", controller:role() == Constants.ROLE.INCENDIE)
 
 click(app.tabs.budget)
-check("achat interdit au poste incendie", app.panels.budget.buyButtons["VPC"].Active == false)
+check("achat interdit au poste incendie", app.panels.budget.rows.entries.VPC.buy.Active == false)
 local beforeForbiddenBuy = #actions
-click(app.panels.budget.buyButtons["VPC"])
+click(app.panels.budget.rows.entries.VPC.buy)
 check("bouton désactivé : aucune intention envoyée", #actions == beforeForbiddenBuy)
 
 click(app.tabs.roles)
@@ -662,7 +742,7 @@ local planA = City.build(Config.CITY_SEED)
 local planB = City.build(Config.CITY_SEED)
 check("dix routes (5 avenues, 5 rues)", #planA.roads == 10)
 check("seize îlots", #planA.blocks == 16)
-check("cinq points d'intérêt", #planA.pois == 5)
+check("six points d'intérêt dont l'église", #planA.pois == 6)
 check("cinq quartiers", #planA.districts == 5)
 check("deux espaces publics", #planA.parks == 2)
 check("huit places de stationnement", #planA.bays == 8)
@@ -708,14 +788,148 @@ check("cadre de visée affiché", app.map.viewFrame.Visible == true)
 check("mini-carte à l'échelle sur grand écran", (function()
 	app.gui.AbsoluteSize = Vector2.new(1356, 888)
 	app:render(controller.state, controller.snapshot)
-	return near(app.map.scale.Scale, 1)
+	return app.map.root.Size.X.Offset == Theme.sizes.minimapWidth
 end)())
 check("mini-carte réduite sur fenêtre courte", (function()
 	app.gui.AbsoluteSize = Vector2.new(900, 560)
 	app:render(controller.state, controller.snapshot)
-	local expected = (560 - Theme.sizes.topBar - Theme.sizes.bar - 24) / Theme.sizes.minimapHeight
-	return near(app.map.scale.Scale, math.max(0.55, expected))
+	return app.map.root.Size.Y.Offset <= 560 - Theme.sizes.topBar - Theme.sizes.bar - 24
+		and app.map.root.Size.X.Offset < Theme.sizes.minimapWidth
+		and app.map.layerButtons.personnel.TextSize >= 12
 end)())
+do
+	-- Résout les UDim2, l'ancrage, le padding et l'UIScale de l'arbre monté.
+	-- Les doublures ne calculent pas AbsoluteSize pour les descendants.
+	local function bounds(node, width, height)
+		if node == app.gui then return {x=0, y=0, w=width, h=height, zoom=1} end
+		if node == app.topGui then return {x=168, y=-58, w=width-168, h=58, zoom=1} end
+		local p = bounds(node.Parent, width, height)
+		local x, y, w, h = p.x, p.y, p.w, p.h
+		local pad = node.Parent:FindFirstChildOfClass("UIPadding")
+		if pad then
+			x += p.zoom * pad.PaddingLeft.Offset
+			y += p.zoom * pad.PaddingTop.Offset
+			w -= p.zoom * (pad.PaddingLeft.Offset + pad.PaddingRight.Offset)
+			h -= p.zoom * (pad.PaddingTop.Offset + pad.PaddingBottom.Offset)
+		end
+		local size, pos = node.Size, node.Position
+		local scale = node:FindFirstChildOfClass("UIScale")
+		local own = scale and scale.Scale or 1
+		local nw = (size.X.Scale * w + size.X.Offset * p.zoom) * own
+		local nh = (size.Y.Scale * h + size.Y.Offset * p.zoom) * own
+		return {x=x + pos.X.Scale*w + pos.X.Offset*p.zoom - nw*node.AnchorPoint.X,
+			y=y + pos.Y.Scale*h + pos.Y.Offset*p.zoom - nh*node.AnchorPoint.Y,
+			w=nw, h=nh, zoom=p.zoom*own}
+	end
+	-- Le tiroir de flotte s'ouvre depuis la colonne et depuis les catégories du pupitre.
+	-- Vérifie le passage direct d'un onglet à l'autre dans les deux cas.
+	for _, resolution in ipairs({{1904,794},{1904,734},{1024,768},{900,560},{812,600},{560,700},{2560,1440}}) do
+		local w, h = resolution[1], resolution[2]
+		local suffix = string.format(" %d × %d", w, h)
+		app.gui.AbsoluteSize = Vector2.new(w,h)
+		controller:render()
+		local nav = bounds(Widgets.find(app.root, "Onglets"), w, h)
+		local function accessible(id)
+			local box = bounds(app.drawer, w, h)
+			return app.drawer.Visible and app.panels[id].root.Visible and box.w > 0
+				and box.x >= nav.x + nav.w + 1 and box.x + box.w <= w
+				and box.y + box.h < bounds(app.bottom.root, w, h).y
+		end
+		controller:openCategory("medical")
+		check("flotte filtrée à droite du menu" .. suffix, accessible("vehicles"))
+		local viewport = Widgets.find(app.drawer, "FenetreTiroir")
+		local viewportWidth = bounds(viewport, w, h).w
+		local content = bounds(Widgets.find(viewport, "ContenuTiroir"), w, h)
+		check("commandes de flotte accessibles dans le tiroir" .. suffix,
+			viewport.ClipsDescendants and viewport.ScrollingDirection == Enum.ScrollingDirection.X
+			and viewport.ScrollingEnabled == (content.w > viewportWidth + 0.01)
+			and content.w >= 800 and near(viewport.CanvasSize.X.Offset * content.zoom, content.w))
+		if viewport.ScrollingEnabled then
+			viewport.CanvasPosition = Vector2.new(120, 0)
+			controller:render()
+			check("lecture conservée dans la flotte" .. suffix, viewport.CanvasPosition.X == 120)
+			click(app.tabs.missions)
+			check("nouvel onglet affiché depuis le début" .. suffix, viewport.CanvasPosition.X == 0)
+		end
+		for _, id in ipairs({"vehicles","incidents","command","missions","roles","budget","equipment","personnel"}) do
+			click(app.tabs[id])
+			check("navigation latérale accessible dans " .. id .. suffix, accessible(id))
+		end
+		controller:closeDrawer()
+	end
+	for _, resolution in ipairs({{1024,768},{1280,720},{1920,1080},{2560,1440}}) do
+		local w, h = resolution[1], resolution[2]
+		local suffix = string.format(" %d × %d", w, h)
+		app.gui.AbsoluteSize = Vector2.new(w,h)
+		app:render(controller.state, controller.snapshot)
+		local function rect(node) return bounds(node,w,h) end
+		local function inside(a,b)
+			return a.x+0.01 >= b.x and a.y+0.01 >= b.y and a.x+a.w <= b.x+b.w+0.01 and a.y+a.h <= b.y+b.h+0.01
+		end
+		local mapBox, journal, radio = rect(app.map.root), rect(app.logPanel), rect(app.radioPanel)
+		local tab = rect(Widgets.find(app.root,"Onglets"))
+		local bottom = rect(app.bottom.root)
+		local screen = rect(app.root)
+		check("HUD plein écran" .. suffix, near(screen.w,w) and near(screen.h,h))
+		check("carte au-dessus des commandes" .. suffix, inside(mapBox,screen) and mapBox.y+mapBox.h < bottom.y)
+		check("onglets et radio dégagés" .. suffix, tab.x+tab.w < radio.x and radio.x+radio.w < mapBox.x)
+		check("journal et carte distincts" .. suffix, journal.x+journal.w < mapBox.x and tab.x+tab.w < journal.x)
+		check("journal au-dessus des commandes" .. suffix, journal.y+journal.h < bottom.y)
+		controller:setTab("budget")
+		local drawer = rect(app.drawer)
+		local catalogue = rect(Widgets.find(app.panels.budget.root, "Catalogue"))
+		check("achats dégagés de la navigation et du pupitre" .. suffix,
+			drawer.x > tab.x + tab.w and drawer.y + drawer.h < bottom.y and inside(catalogue, drawer) and catalogue.h > 175)
+		local filters = rect(Widgets.find(app.panels.budget.root, "ServiceAchat"))
+		local balance = rect(Widgets.find(app.panels.budget.root, "Solde"))
+		local modes = rect(Widgets.find(app.panels.budget.root, "VueBudget"))
+		check("filtres et solde dégagés du catalogue" .. suffix, filters.y + filters.h < catalogue.y and modes.x + modes.w <= balance.x)
+		controller:toast("Véhicule acheté.", true)
+		check("confirmation lisible au-dessus des contrôles" .. suffix, Widgets.find(app.drawer, "RetourAction").Visible
+			and not Widgets.find(app.root, "Notifications").Visible and rect(Widgets.find(app.drawer,"RetourAction")).y < modes.y)
+		controller:clearToasts()
+		controller:closeDrawer()
+		local previousRight = -1
+		for _, name in ipairs({"Moyens","GroupesTemps","CommandesContextuelles","Personnel"}) do
+			local panel = Widgets.find(app.bottom.root,name)
+			local box = rect(panel)
+			check("pupitre " .. name .. suffix, inside(box,bottom) and box.x>previousRight and box.w>140)
+			previousRight = box.x+box.w
+			for _, button in ipairs(panel:GetChildren()) do
+				if button.ClassName == "TextButton" then
+					local boxButton = rect(button)
+					check("commande " .. button.Name .. suffix, inside(boxButton,box) and boxButton.w >= 22)
+				end
+			end
+		end
+		check("barre à côté des commandes Roblox" .. suffix,
+			app.topGui.ScreenInsets == Enum.ScreenInsets.TopbarSafeInsets
+			and rect(app.topBar).x > 168 and rect(app.topBar).y >= -58
+			and rect(app.topBar).y + rect(app.topBar).h <= 0)
+		local minFont = math.huge
+		for _, node in ipairs(app.root:GetDescendants()) do
+			if (node.ClassName == "TextLabel" or node.ClassName == "TextButton") and node.Text ~= "" then
+				minFont = math.min(minFont,node.TextSize*rect(node).zoom)
+			end
+		end
+		check("polices effectives >= 12 px" .. suffix, minFont >= 12, minFont)
+		check("transmission radio sur deux lignes" .. suffix, rect(app.radioPanel).h >= 2*13*screen.zoom
+			and Widgets.find(app.radioPanel,"Transmission").TextWrapped)
+	end
+end
+do
+	local roster = app.panels.personnel.root
+	controller:setTab("personnel")
+	for _, viewport in ipairs({{812, 600}, {560, 700}}) do
+		app.gui.AbsoluteSize = Vector2.new(viewport[1], viewport[2])
+		controller:render()
+		local columns = Widgets.find(roster, "ColonneDetail").Position
+		check("espace de gestion exploitable en fenêtre de " .. viewport[1],
+			app.drawer.Position.X.Offset >= Theme.sizes.tabsCompact + 16 and app.drawer.Size.Y.Offset >= 320
+			and (columns.Y.Scale > 0) == (viewport[1] - app.drawer.Position.X.Offset - 32 < 620))
+	end
+	controller:closeDrawer()
+end
 app.gui.AbsoluteSize = Vector2.new(1356, 888)
 app:render(controller.state, controller.snapshot)
 
@@ -740,6 +954,88 @@ check("anneau vert sur l'engin sélectionné", vsavView ~= nil and vsavView.ring
 check("urgence 3D créée", app.scene.incidents.entries[incident.id] ~= nil)
 local beacon = app.scene.incidents.entries[incident.id].beacon
 check("balise au-dessus du sol", beacon ~= nil and beacon.Position.Y > 0)
+
+do
+	local workspace = game:GetService("Workspace")
+	local cityScene = require(Services:WaitForChild("SceneService")).build(Config, workspace)
+	local buildings = cityScene:FindFirstChild("Batiments")
+	-- Deux dalles qui occupent le même plan produisent du scintillement en mouvement.
+	local surfaces = {}
+	local roadArea = 0
+	for _, name in ipairs({"Voirie", "Trottoirs"}) do
+		for _, part in ipairs(cityScene:FindFirstChild(name):GetChildren()) do
+			table.insert(surfaces, part)
+			if name == "Voirie" then roadArea += part.Size.X * part.Size.Z end
+		end
+	end
+	local overlap = false
+	for i, a in ipairs(surfaces) do
+		for j = i + 1, #surfaces do
+			local b = surfaces[j]
+			if math.abs(a.Position.X - b.Position.X) < (a.Size.X + b.Size.X) / 2 - 0.001
+				and math.abs(a.Position.Z - b.Position.Z) < (a.Size.Z + b.Size.Z) / 2 - 0.001 then
+				overlap = true
+			end
+		end
+	end
+	check("chaussées et trottoirs sans surfaces superposées", not overlap)
+	local width = City.ROAD_HALF * 2
+	local expectedArea = ((#City.AVENUES + #City.STREETS) * City.WIDTH * width
+		- #City.AVENUES * #City.STREETS * width * width) * Config.WORLD_SCALE ^ 2
+	check("carrefours intégralement couverts après découpe", near(roadArea, expectedArea))
+	check("église et hôpital reconnaissables en 3D", buildings:FindFirstChild("Clocher") ~= nil
+		and buildings:FindFirstChild("ToitNef") ~= nil and buildings:FindFirstChild("AuventUrgences") ~= nil)
+	check("immeubles et caserne détaillés", buildings:FindFirstChild("Balcon") ~= nil
+		and cityScene:FindFirstChild("Caserne"):FindFirstChild("TourDeSechage") ~= nil)
+	check("portes arrière du VSAV", vsavView.folder:FindFirstChild("PortesSanitaires") ~= nil)
+	local models = require(ERSClient:WaitForChild("UI"):WaitForChild("StreetModels"))
+	local marker = { EPA = "Echelon", BEA = "Nacelle", CCGC = "Citerne", MOTO = "Guidon", VPC = "MatRadio" }
+	for _, definition in ipairs(Vehicles.list) do
+		local built = models.vehicle(workspace, "Essai", definition.id, definition.service)
+		check("carrosserie " .. definition.id, built.body and built.light and built.model:FindFirstChild("Pneu")
+			and (not marker[definition.id] or built.model:FindFirstChild(marker[definition.id]) ~= nil))
+		built.model:Destroy()
+	end
+	local traffic = require(ERSClient:WaitForChild("UI"):WaitForChild("StreetTraffic"))
+	local state = scene.traffic
+	local cars, walkers = 0, 0
+	for _, actor in ipairs(state.actors) do
+		if actor.walking then walkers += 1 else cars += 1 end
+		local x1, z1 = traffic.sample(actor.route, 0)
+		local x2, z2 = traffic.sample(actor.route, actor.route.duration)
+		check("continuité du parcours civil", near(x1, x2) and near(z1, z2))
+	end
+	check("population de la ville", cars == 8 and walkers == 8)
+	local route = state.actors[1].route
+	local section = route.sections[1]
+	check("départ sur la voie de droite", section.z > City.STREETS[1] and section.z < City.STREETS[1] + City.ROAD_HALF)
+	local stopTime = section.run - 3 / section.v
+	local xa, za = traffic.sample(route, stopTime)
+	local xb, zb = traffic.sample(route, stopTime + section.pause * 0.5)
+	check("arrêt avant le carrefour", near(xa, xb) and near(za, zb))
+	traffic.sync(state, {time = 12, timeScale = 1})
+	traffic.step(state, 0.2)
+	local previous = state.actors[1].model.WorldPivot.Position
+	traffic.step(state, 0.5)
+	local moved = state.actors[1].model.WorldPivot.Position
+	check("voiture en mouvement", moved.X ~= previous.X or moved.Z ~= previous.Z)
+	traffic.sync(state, {time = 12.7, timeScale = 0})
+	traffic.step(state, 0.1)
+	local frozen = state.actors[1].model.WorldPivot
+	traffic.step(state, 0.5)
+	check("circulation suspendue en pause", state.actors[1].model.WorldPivot == frozen)
+	local fake = {id = 999, x = 9, z = 15, status = Constants.INCIDENT_STATUS.ACTIVE,
+		fireCells = {{x = 9, z = 15, heat = 60, burning = true}}}
+	scene:update({incidents = {fake}, vehicles = {}})
+	local visual = scene.incidents.entries[999]
+	check("foyer actif dessiné", visual.cells[1] ~= nil and visual.cells[1].fire.Size > 3)
+	fake.fireCells[1].burning = false
+	scene:update({incidents = {fake}, vehicles = {}})
+	check("foyer éteint retiré", next(visual.cells) == nil)
+	controller:applySnapshot(SnapshotService.build(world))
+	vsavView = scene.vehicles.entries[vsav.id]
+	cityScene:Destroy()
+end
 
 local firstX = vsavView.x
 vsavView.targetX = firstX + 10
@@ -885,6 +1181,100 @@ check("nouvelle partie appliquée par le serveur", world.budget == Config.START_
 check("action new_game envoyée", lastAction() == "new_game")
 check("menu refermé après confirmation", controller.state.menuOpen == false)
 
+do
+	click(app.tabs.personnel)
+	local panel = app.panels.personnel.root
+	use(panel, "VuePersonnel_recruit")
+	local offers = Widgets.find(panel, "Offres")
+	check("recrutement par tarif croissant à l’ouverture", pricesInOrder(offers, false))
+	use(panel, "TriPrix_desc")
+	check("recrutement par tarif décroissant", pricesInOrder(offers, true))
+	use(panel, "ServicePersonnel_medical")
+	check("recrutement médical trié par tarif décroissant", pricesInOrder(offers, true) and not Widgets.find(offers, "Offre_technician"))
+	use(panel, "TriPrix_asc")
+	check("recrutement médical trié par tarif croissant", pricesInOrder(offers, false))
+	use(panel, "ServicePersonnel_technical")
+	check("le recrutement technique isole le technicien", Widgets.find(panel, "Offre_technician") and not Widgets.find(panel, "Offre_doctor"))
+	local offer = Widgets.find(panel, "Offre_technician")
+	local id = world.nextPersonnelId
+	local before = world.budget
+	check("tarif du recrutement affiché", string.find(offer:FindFirstChild("Cout").Text, "1 400", 1, true) ~= nil)
+	use(panel, "Action_recruit_technician")
+	check("recrutement par le panneau", lastAction() == "recruit_personnel" and world.personnel[id] ~= nil)
+	use(panel, "VuePersonnel_roster")
+	check("effectif filtré et fiche séparée des offres", Widgets.find(panel, "Garde").Visible and not Widgets.find(panel, "Offres").Visible)
+	use(panel, "PersonnelLigne_" .. id)
+	use(panel, "ServicePersonnel_medical")
+	check("la fiche ne montre pas un agent d’un autre service", not Widgets.find(panel, "Action_train_personnel").Visible)
+	use(panel, "ServicePersonnel_technical")
+	local training = Widgets.find(panel, "Action_train_personnel")
+	click(training)
+	check("formation depuis la fiche", lastAction() == "train_personnel" and world.personnel[id].level == 1)
+	click(Widgets.find(panel, "Action_transfer_personnel"))
+	check("cession depuis la fiche", lastAction() == "transfer_personnel"
+		and world.personnel[id] == nil and world.budget == before - 1400 - 500 + 700)
+	click(app.tabs.budget)
+	check("inflation répercutée sur le catalogue", Widgets.find(app.panels.budget.root, "Achat_VSAV")
+		:FindFirstChild("Cout").Text == Theme.money(Vehicles.get("VSAV").cost + 30))
+	click(app.tabs.personnel)
+	use(panel, "ServicePersonnel_fire")
+	local sapeur
+	for _, person in ipairs(controller.snapshot.personnel) do
+		if person.service == "fire" and not person.vehicleId then sapeur = person break end
+	end
+	use(panel, "PersonnelLigne_" .. sapeur.id)
+	controller:select("vehicle", nil)
+	use(panel, "Action_assign_personnel")
+	local pumpId = vehicleOfType("FPT").id
+	check("choix des affectations admissibles", Widgets.find(panel, "ChoixAffectation").Visible
+		and not Widgets.find(panel, "Affecter_" .. vehicleOfType("VSAV").id))
+	use(panel, "Affecter_" .. pumpId)
+	check("affectation réelle depuis la fiche", world.personnel[sapeur.id].vehicleId == pumpId and Widgets.find(panel, "Detail").Visible)
+	use(panel, "Action_unassign_personnel")
+	check("retrait depuis la même fiche", world.personnel[sapeur.id].vehicleId == nil)
+	local store = app.panels.equipment.root
+	click(app.tabs.equipment)
+	controller:select("vehicle", nil)
+	use(store, "FamilleMateriel_medical")
+	check("le magasin filtre par usage", Widgets.find(store, "Stock_SAC_SECOURS") and not Widgets.find(store, "Stock_TUYAU"))
+	use(store, "Action_installer_SAC_SECOURS")
+	check("choix d’un engin depuis le rayon", Widgets.find(store, "Engins").Visible)
+	local pump = vehicleOfType("FPT")
+	use(store, "Choisir_" .. pump.id)
+	check("retour au rayon avec le véhicule choisi", Widgets.find(store, "Stock").Visible and controller.state.vehicleId == pump.id)
+	-- Le PC mobile initial est embarqué dans le VPC. Le déposer rend l’offre visible.
+	use(store, "VueMateriel_fleet")
+	use(store, "Choisir_" .. vehicleOfType("VPC").id)
+	use(store, "VueMateriel_loaded")
+	use(store, "Action_deposer_PC_MOBILE")
+	use(store, "VueMateriel_fleet")
+	use(store, "Choisir_" .. pump.id)
+	use(store, "VueMateriel_stock")
+	use(store, "FamilleMateriel_support")
+	local pc = Widgets.find(store, "Action_installer_PC_MOBILE")
+	check("le matériel incompatible est identifié avant l’installation", pc ~= nil and not pc.Active and pc.Text == "Incompatible")
+	use(store, "FamilleMateriel_medical")
+	local stock = world.equipmentStock.SAC_SECOURS
+	use(store, "Action_installer_SAC_SECOURS")
+	check("installation depuis la catégorie médicale", world.equipmentStock.SAC_SECOURS == stock - 1)
+	use(store, "VueMateriel_loaded")
+	use(store, "Action_deposer_SAC_SECOURS")
+	check("dépose depuis la vue embarquée", world.equipmentStock.SAC_SECOURS == stock)
+	use(store, "VueMateriel_stock")
+	use(store, "FamilleMateriel_security")
+	check("rayon vide expliqué", Widgets.find(store, "Vide").Visible)
+	click(app.tabs.budget)
+	local alternate = {UserId = 17831, Name = "Relève"}
+	NetworkService.handle(world, alternate, "claim_role", {role = Constants.ROLE.COMMANDEMENT})
+	controller:applySnapshot(SnapshotService.build(world))
+	local pass = Widgets.find(app.panels.budget.root, "Action_pass_purchase_turn")
+	check("bouton de passage proposé au titulaire", pass.Active and pass.Visible)
+	click(pass)
+	check("passage de tour depuis le budget", lastAction() == "pass_purchase_turn"
+		and world.purchaseTurn.owner == alternate.UserId and not app.panels.budget.rows.entries.VSAV.buy.Active)
+	world.players[alternate.UserId].connected = false
+end
+
 world.players[player.UserId].role = Constants.ROLE.OBSERVATEUR
 controller:applySnapshot(SnapshotService.build(world))
 check("observateur sans nouvelle partie", app.menu.newGameButton.Visible == false)
@@ -937,25 +1327,27 @@ probe:update({
 })
 check("sirène au départ d'un engin", probe.sirenActive == true
 	and probe.siren ~= nil and probe.siren.Playing == true)
-check("premier ton de la sirène", probe.siren.PlaybackSpeed == Config.AUDIO_SIREN_SPEEDS[1])
-check("alternance vers le second ton", probe:tickSiren() == 2
-	and probe.siren.PlaybackSpeed == Config.AUDIO_SIREN_SPEEDS[2])
-probe:tickSiren()
-check("retour au premier ton", probe.siren.PlaybackSpeed == Config.AUDIO_SIREN_SPEEDS[1])
+check("sirène enregistrée à sa vitesse native", probe.siren.SoundId == Config.AUDIO_SIREN
+	and probe.siren.PlaybackSpeed == 1 and probe.siren.Looped)
+check("annonce vocale de la centrale", probe.voice.IsPlaying and probe.voice.VoiceId == "402"
+	and string.find(probe.radioCaption, "Centre 112", 1, true) ~= nil)
 probe:update({ incidents = {}, vehicles = {} })
 check("sirène coupée au retour", probe.sirenActive == false and probe.siren.Playing == false)
+
+probe:update({ incidents = {}, vehicles = { { id = 1, status = Constants.VEHICLE_STATUS.ON_SCENE } } })
+check("sirène éteinte sur les lieux", probe.siren.Playing == false)
 
 -- Coupure : le groupe tombe à zéro, la sirène s'arrête et les bruits sont
 -- refusés. Le retour du son relance la sirène si un engin est engagé.
 probe:update({
 	incidents = {},
-	vehicles = { { id = 1, status = Constants.VEHICLE_STATUS.ON_SCENE } },
+	vehicles = { { id = 1, status = Constants.VEHICLE_STATUS.DISPATCHED } },
 })
 probe:setMuted(true)
 check("mute coupe le groupe", probe.group.Volume == 0)
 check("mute arrête la sirène", probe.siren.Playing == false and probe.sirenActive == false)
 check("mute bloque les bruits", probe:play("click") == false)
-check("sirène silencieuse en mute", probe:tickSiren() == nil)
+check("radio coupée en mute", probe.voice.Volume == 0 and not probe.voice.IsPlaying)
 probe:setMuted(false)
 check("son rétabli", probe.group.Volume == 1)
 check("sirène relancée si engin engagé", probe.siren.Playing == true)
@@ -975,7 +1367,38 @@ check("bouton revient à SON", app.audioButton.Text == "SON" and audio.muted == 
 check("groupe de l'interface rétabli", audio.group.Volume == 1)
 
 -- ─────────────────────────────────────────────────────────────
+suite("Ordres de terrain depuis le panneau Interventions")
+do
+	controller:command("claim_role", { role = Constants.ROLE.DIRECTION })
+	local testFpt = vehicleOfType("FPT")
+	local assignment = IncidentService.spawn(world, "FEU_VEHICULE", testFpt.home).data
+	controller:applySnapshot(SnapshotService.build(world))
+	controller:select("vehicle", testFpt.id)
+	controller:select("incident", assignment.id)
+	controller:command("auto_crew", {vehicleId = testFpt.id})
+	click(app.panels.incidents.dispatchButton)
+	local orders = app.panels.incidents.orderButtons
+	check("extinction proposée à l'arrivée de l'équipe", orders.extinguish.Visible and orders.extinguish.Active)
+	click(orders.extinguish)
+	check("le clic affecte l'équipe à l'extinction", lastAction() == "field_order" and testFpt.fieldOrder == "extinguish")
+	click(orders.hold)
+	check("changement d'ordre en réserve", testFpt.fieldOrder == "hold" and not orders.hold.Active)
+	check("désincarcération masquée sans victime piégée", not orders.extricate.Visible)
+end
+
 suite("Intégrité du monde après les actions d'interface")
+do
+	click(app.tabs.missions)
+	local panel = app.panels.missions
+	check("panneau Missions ouvert", controller.state.tab == "missions" and panel.root.Visible)
+	check("score initial lisible", string.find(panel.summary.Text, "Score 0", 1, true) ~= nil)
+	click(panel.buttons.eglise)
+	check("lancement de l’église relié au serveur", lastAction() == "start_mission" and world.mission.id == "eglise")
+	check("objectifs et disponibilité actualisés", panel.links[1].Active and not panel.links[2].Active and not panel.buttons.route.Active)
+	click(panel.links[1])
+	check("objectif ouvre la fiche de son intervention", controller.state.tab == "incidents"
+		and controller:selectedIncident().id == world.mission.incidentIds[1])
+end
 -- ─────────────────────────────────────────────────────────────
 local finalSnapshot = SnapshotService.build(world)
 check("snapshot final sérialisable", SnapshotService.isSerializable(finalSnapshot) == true)
@@ -1002,6 +1425,127 @@ end)())
 
 -- ─────────────────────────────────────────────────────────────
 print("")
+do
+	controller:closeDrawer()
+	app.gui.AbsoluteSize = Vector2.new(1904, 900)
+	controller:render()
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
+	local inputs = game:GetService("UserInputService")
+	local function drag(panel, dx, dy)
+		local input = {UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(500,500,0)}
+		Widgets.find(panel, "Redimensionner").InputBegan:Fire(input)
+		inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(500+dx,500+dy,0)})
+		inputs.InputEnded:Fire(input)
+	end
+	local before = app.map.root.Size.X.Offset
+	drag(app.map.root, -90, 90)
+	check("carte agrandie par sa poignée", app.map.root.Size.X.Offset > before)
+	local resized = app.map.root.Size.X.Offset
+	controller:applySnapshot(SnapshotService.build(world))
+	check("taille carte conservée entre snapshots", app.map.root.Size.X.Offset == resized)
+	drag(app.logPanel, -150, -100)
+	check("journal redimensionné dans les deux axes", app.logPanel.Size.X.Offset < 720 and app.logPanel.Size.Y.Offset == 242)
+	drag(app.map.root, -10000, 10000)
+	check("carte bornée au-dessus du pupitre", app.map.root.Size.Y.Offset <= 900 - Theme.sizes.topBar - Theme.sizes.bar - 24)
+	local size = app.logPanel.Size.Y.Offset
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(1,1,0)})
+	check("relâcher la souris termine le redimensionnement", app.logPanel.Size.Y.Offset == size)
+end
+do
+	local inputs = game:GetService("UserInputService")
+	local entry = app.editor.entries.journal
+	local down = { UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(400,400,0) }
+	entry.overlay:FindFirstChild("Deplacer").InputBegan:Fire(down)
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(500,300,0)})
+	inputs.InputEnded:Fire(down)
+	check("déplacement enregistré pour le journal", app.editor.layout.journal ~= nil)
+	local x = app.logPanel.Position.X.Offset
+	controller:render()
+	check("position personnalisée conservée au rendu", app.logPanel.Position.X.Offset == x)
+	entry.overlay:FindFirstChild("Taille").InputBegan:Fire(down)
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(490,440,0)})
+	inputs.InputEnded:Fire(down)
+	check("échelle du panneau modifiée avec la poignée", app.editor.layout.journal.scale > 1)
+	app.gui.AbsoluteSize = Vector2.new(812,600)
+	controller:render()
+	check("panneau personnalisé contenu après réduction de la fenêtre",
+		app.logPanel.Position.X.Offset + entry.w <= app.editor.width + 0.01
+		and app.logPanel.Position.Y.Offset + entry.h <= app.editor.height + 0.01)
+	app.gui.AbsoluteSize = Vector2.new(1904,900)
+	controller:render()
+	x = app.logPanel.Position.X.Offset
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
+	check("cadenas masque les poignées", not entry.overlay.Visible and not Widgets.find(app.logPanel,"Redimensionner").Visible)
+	entry.overlay:FindFirstChild("Deplacer").InputBegan:Fire(down)
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(1000,900,0)})
+	check("cadenas interdit les déplacements", app.logPanel.Position.X.Offset == x)
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
+	click(Widgets.find(app.topBar, "ReinitialiserHUD"))
+	check("réinitialisation de la disposition", next(app.editor.layout) == nil and app.map.root.Size.X.Offset == Theme.sizes.minimapWidth)
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
+	local service = require(game:GetService("ServerScriptService"):WaitForChild("ERS"):WaitForChild("Services"):WaitForChild("HudPreferenceService"))
+	local saved = {}
+	local store = { GetAsync = function(_,key) return saved[key] end, SetAsync = function(_,key,value) saved[key] = value end }
+	local handle = service.new(store)
+	local layout = { journal = {x=0.2,y=0.4,scale=0.8} }
+	check("préférence sauvegardée sous le joueur authentifié", handle({UserId=123},layout).persistent and saved["123"].journal.x==0.2)
+	check("préférence restaurée dans une nouvelle session", service.new(store)({UserId=123},nil).layout.journal.scale==0.8)
+	check("préférences isolées par joueur", next(handle({UserId=124},nil).layout)==nil)
+	check("coordonnées invalides refusées", not handle({UserId=125},{journal={x=math.huge,y=0,scale=1}}).ok)
+	check("panneaux inconnus refusés", service.validate({alien={x=0,y=0,scale=1}})==nil)
+	check("repli local explicite sans DataStore", service.new(nil)({UserId=126},layout).persistent==false)
+end
+do
+	controller:setMenu(false)
+	controller:closeDrawer()
+	camera:reset()
+	camera:setViewport(1280,720)
+	local controls = InputController.new(controller, app, camera)
+	controls:mount()
+	local inputs = game:GetService("UserInputService")
+	local key = {KeyCode=Enum.KeyCode.Right, UserInputType=Enum.UserInputType.Keyboard}
+	inputs.InputBegan:Fire(key,false)
+	local x = camera.target.x
+	for _=1,30 do controls:step(1/60) end
+	check("flèche maintenue déplace en continu", camera.target.x > x)
+	inputs.InputEnded:Fire(key)
+	for _=1,60 do controls:step(1/60) end
+	x = camera.target.x
+	for _=1,60 do controls:step(1/60) end
+	check("relâcher une flèche termine le mouvement", near(x,camera.target.x,0.01))
+	inputs.InputBegan:Fire(key,false)
+	inputs.WindowFocusReleased:Fire()
+	x = camera.target.x
+	controls:step(0.05)
+	check("perte de focus annule les touches maintenues", camera.target.x == x)
+	local down = {UserInputType=Enum.UserInputType.MouseButton1,Position=Vector3.new(500,300,0)}
+	inputs.InputBegan:Fire(down,false)
+	inputs.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseMovement,Position=Vector3.new(600,300,0)},false)
+	inputs.InputEnded:Fire(down)
+	check("glisser la vue déplace la caméra et annule le double-clic", camera.target.x < x and controls.lastClick == nil)
+	local query = playerGui.GetGuiObjectsAtPosition
+	playerGui.GetGuiObjectsAtPosition = function() return {app.logPanel} end
+	x = camera.target.x
+	local distance = camera.distance
+	inputs.InputBegan:Fire(down,false)
+	inputs.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseMovement,Position=Vector3.new(700,300,0)},false)
+	inputs.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseWheel,Position=Vector3.new(700,300,1)},false)
+	inputs.InputEnded:Fire(down)
+	check("journal sous la souris bloque glissement et zoom", camera.target.x == x and camera.distance == distance)
+	playerGui.GetGuiObjectsAtPosition = query
+	local host = Widgets.find(app.map.root,"Zone")
+	host.AbsolutePosition = Vector2.new(100,100)
+	host.AbsoluteSize = Vector2.new(200,200)
+	Widgets.find(app.map.root,"NaviguerCarte").MouseButton1Down:Fire(150,250)
+	check("clic dans le fond de carte recentre à la position choisie", near(camera.target.x,25) and near(camera.target.z,75))
+	local start = camera.display.x
+	camera:focus(90,50)
+	camera:step(1/60)
+	check("transition caméra progressive", camera.display.x > start and camera.display.x < 90)
+	for _=1,120 do camera:step(1/60) end
+	check("transition converge vers le point choisi", near(camera.display.x,90,0.001))
+	controls:unmount()
+end
 print(string.format("  Interface : %d réussite(s), %d échec(s)", passed, failed))
 if failed > 0 then
 	error(string.format("%d test(s) d'interface en échec", failed))

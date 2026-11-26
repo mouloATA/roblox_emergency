@@ -4,6 +4,8 @@ Document de travail : ce que fait le jeu de référence, ce que fait ERS en
 version `0.3.0`, et ce qui manque encore. Les assets binaires du kit ne sont
 pas comparés : ils ne sont ni repris ni redistribués.
 
+La version locale 0.4.0 et ses ajouts sont décrits dans le [guide de jeu](Gameplay.md) et le [journal des changements](Changelog.md).
+
 ## 1. Sources
 
 | Source | Usage |
@@ -11,6 +13,7 @@ pas comparés : ils ne sont ni repris ni redistribués.
 | `EM4_Roblox_Kit/01_ANALYSE/*` | architecture, rôles, missions, scripts, formats |
 | `EM4_Roblox_Kit/02_DONNEES/*.json` | comptages et paramètres (unités, freeplay, campagne) |
 | `EM4_Roblox_Kit/04_MOD_CSP_IRG/*` | contenu du mod (36 personnels, 113 véhicules) |
+| `references/em4_base/` (local, ignoré par Git) | 134 scripts texte du jeu de base à consulter comme exemples de logique |
 | `src/` et `tests/` d'ERS | couverture réelle, vérifiée par `tools/check.ps1` |
 | Session Studio du 20–21/11/2026 | constats visuels et fonctionnels |
 

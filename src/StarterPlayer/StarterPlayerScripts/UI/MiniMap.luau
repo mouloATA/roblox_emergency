@@ -59,13 +59,6 @@ function MiniMap.create(parent: any, context: any): any
 	Widgets.stroke(root, Theme.colors.steel, 2)
 	Widgets.corner(root, Theme.radius.small)
 
-	-- Échelle de sécurité : `resize` réduit la carte sur les petites fenêtres
-	-- sans reconstruire ses éléments ni changer ses proportions.
-	local uiScale = Instance.new("UIScale")
-	uiScale.Name = "Echelle"
-	uiScale.Scale = 1
-	uiScale.Parent = root
-
 	local inner = Theme.sizes.minimapWidth - 16
 
 	local header = Widgets.label(root, "Titre", "CARTE TACTIQUE", {
@@ -142,10 +135,11 @@ function MiniMap.create(parent: any, context: any): any
 		})
 	end
 
+	local shortName = {eglise = "Église", commissariat = "Police", industrie = "Usine"}
 	for _, poi in ipairs(plan.pois) do
-		Widgets.label(host, "POI_" .. poi.id, poi.name, {
+		Widgets.label(host, "POI_" .. poi.id, shortName[poi.id] or poi.name, {
 			Position = UDim2.new(0, 0, 0, 0),
-			Size = UDim2.fromOffset(74, 12),
+			Size = UDim2.fromOffset(64, 16),
 			TextSize = 8,
 			Font = Theme.fonts.bold,
 			TextColor3 = Theme.colors.text,
@@ -155,9 +149,10 @@ function MiniMap.create(parent: any, context: any): any
 		}).Position = mapPosition(poi.x, poi.z)
 	end
 
+	local districtLabels = {}
 	for _, district in ipairs(plan.districts) do
 		local label = Widgets.label(host, "Quartier_" .. district.id, string.upper(district.name), {
-			Size = UDim2.fromOffset(90, 12),
+			Size = UDim2.fromOffset(94, 16),
 			TextSize = 8,
 			Font = Theme.fonts.bold,
 			TextColor3 = Theme.colors.textMuted,
@@ -165,7 +160,8 @@ function MiniMap.create(parent: any, context: any): any
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			ZIndex = 12,
 		})
-		label.Position = mapPosition(district.x, district.z)
+		label.Position = mapPosition(district.x, district.z - 7)
+		table.insert(districtLabels, label)
 	end
 
 	-- Caserne : repère fixe et lisible.
@@ -217,7 +213,7 @@ function MiniMap.create(parent: any, context: any): any
 		local stroke = Widgets.stroke(marker, Theme.colors.background, 1)
 
 		local caption = Widgets.label(marker, "Indicatif", vehicle.callsign, {
-			Size = UDim2.fromOffset(66, 10),
+			Size = UDim2.fromOffset(72, 16),
 			Position = UDim2.fromOffset(-28, 11),
 			TextSize = 8,
 			TextColor3 = Theme.colors.textDim,
@@ -243,6 +239,7 @@ function MiniMap.create(parent: any, context: any): any
 		entry.instance.BackgroundTransparency = vehicle.status == Constants.VEHICLE_STATUS.AVAILABLE and 0.25 or 0
 		entry.caption.Text = vehicle.callsign
 		local selected = controller.state.vehicleId == vehicle.id
+		entry.caption.Visible = selected
 		entry.stroke.Color = selected and Theme.colors.active or Theme.colors.background
 		entry.stroke.Thickness = selected and 2 or 1
 	end)
@@ -255,7 +252,7 @@ function MiniMap.create(parent: any, context: any): any
 		marker.Name = "Intervention_" .. incident.id
 		marker.Text = "!"
 		marker.TextColor3 = Theme.colors.background
-		marker.TextSize = 11
+		marker.TextSize = Theme.text.tiny
 		marker.Font = Theme.fonts.bold
 		marker.BorderSizePixel = 0
 		marker.Size = UDim2.fromOffset(16, 16)
@@ -267,7 +264,7 @@ function MiniMap.create(parent: any, context: any): any
 		local stroke = Widgets.stroke(marker, Theme.colors.background, 1)
 
 		local caption = Widgets.label(marker, "Delai", "", {
-			Size = UDim2.fromOffset(56, 10),
+			Size = UDim2.fromOffset(56, 16),
 			Position = UDim2.fromOffset(-20, 17),
 			TextSize = 8,
 			TextColor3 = Theme.colors.warning,
@@ -410,7 +407,7 @@ function MiniMap.create(parent: any, context: any): any
 		sectors = "SECT.",
 		buildings = "BÂTI",
 	}
-	local cell = (inner - 5 * 4) / 6
+	local cell = (inner - 4 * 4) / 5
 	for index, layer in ipairs(layerOrder) do
 		local button = Widgets.button(controls, "Couche_" .. layer, layerLabels[layer], function()
 			controller:toggleLayer(layer)
@@ -436,6 +433,18 @@ function MiniMap.create(parent: any, context: any): any
 		TextColor3 = Theme.colors.commandText,
 	})
 	layerButtons.personnel = crewButton
+
+	local navigation = Widgets.button(host, "NaviguerCarte", "", function() end, {
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 10, AutoButtonColor = false,
+	})
+	markerLayer.ZIndex = 11
+	navigation.MouseButton1Down:Connect(function(x: number, y: number)
+		if not camera then return end
+		local size, origin = host.AbsoluteSize, host.AbsolutePosition
+		if size.X <= 0 or size.Y <= 0 then return end
+		camera:focus(math.clamp((x-origin.X)/size.X, 0, 1)*City.WIDTH,
+			math.clamp((y-origin.Y)/size.Y, 0, 1)*City.WIDTH)
+	end)
 
 	local function update(snapshot: any, state: any, view: any?): ()
 		local units = snapshot.vehicles or {}
@@ -488,7 +497,7 @@ function MiniMap.create(parent: any, context: any): any
 	-- Réduit la carte pour qu'elle reste sous la barre supérieure, à droite de
 	-- la colonne d'onglets et au-dessus de la barre inférieure. Sans cela, une
 	-- fenêtre courte la ferait passer sous la barre de commandes.
-	local function resize(viewportX: number?, viewportY: number?): ()
+	local function resize(viewportX: number?, viewportY: number?, requestedWidth: number?): ()
 		if not viewportX or not viewportY or viewportX <= 0 or viewportY <= 0 then
 			return
 		end
@@ -496,7 +505,27 @@ function MiniMap.create(parent: any, context: any): any
 		local availableY = viewportY - Theme.sizes.topBar - Theme.sizes.bar - 24
 		local fitX = availableX / Theme.sizes.minimapWidth
 		local fitY = availableY / Theme.sizes.minimapHeight
-		uiScale.Scale = math.clamp(math.min(1, fitX, fitY), 0.55, 1)
+		local fraction = math.clamp(math.min(1, fitX, fitY), 0.50, 1)
+		local side = math.max(140, math.floor((Theme.sizes.minimapHeight * fraction) - 76))
+		if requestedWidth then
+			local maximum = math.max(140, math.min(availableX - 196, availableY - 76))
+			side = math.clamp(requestedWidth - 16, math.min(240, maximum), maximum)
+		end
+		local width = side + 16
+		if root.Size.X.Offset == width and controls.Size.X.Offset == side and root.Size.Y.Offset == side + 76 then return end
+		root.Size = UDim2.fromOffset(width, side + 76)
+		host.Size = UDim2.fromOffset(side, side)
+		controls.Position = UDim2.fromOffset(8, side + 30)
+		controls.Size = UDim2.fromOffset(side, 26)
+		for i, key in ipairs({"units", "incidents", "sectors", "buildings", "personnel"}) do
+			local button = layerButtons[key]
+			button.Size = UDim2.new(0.2, -3.2, 0, 24)
+			button.Position = UDim2.new((i - 1) / 5, (i - 1) * 0.8, 0, 0)
+			button.Text = key == "personnel" and (side < 280 and "ÉQ." or "ÉQUIPES") or layerLabels[key]
+		end
+		for _, label in ipairs(districtLabels) do
+			label.Visible = side >= 300
+		end
 	end
 
 	update(context.snapshot or { vehicles = {}, incidents = {}, sectors = {} }, controller.state, nil)
@@ -505,7 +534,6 @@ function MiniMap.create(parent: any, context: any): any
 		root = root,
 		update = update,
 		resize = resize,
-		scale = uiScale,
 		setCamera = setCamera,
 		markers = { vehicles = vehicleMarkers, incidents = incidentMarkers },
 		routes = routeViews,

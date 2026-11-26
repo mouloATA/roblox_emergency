@@ -27,6 +27,7 @@ local TAB_KEYS = {
 	Five = "command",
 	Six = "budget",
 	Seven = "roles",
+	Eight = "missions",
 }
 
 local DIGIT_SLOTS = {
@@ -39,6 +40,7 @@ local DIGIT_SLOTS = {
 }
 
 local DOUBLE_CLICK_SECONDS = 0.4
+local PAN_KEYS = { W = {0,-1}, Up = {0,-1}, S = {0,1}, Down = {0,1}, A = {-1,0}, Left = {-1,0}, D = {1,0}, Right = {1,0} }
 
 function InputController.new(controller: any, app: any, camera: any): any
 	local self: any = setmetatable({}, { __index = InputController })
@@ -50,6 +52,9 @@ function InputController.new(controller: any, app: any, camera: any): any
 	self.endConnection = nil
 	self.ctrl = false
 	self.lastClick = nil
+	self.held = {}
+	self.velocity = { x = 0, y = 0 }
+	self.drag = nil
 	return self
 end
 
@@ -126,8 +131,8 @@ function InputController.handleKey(self: any, keyCode: any): boolean
 		return true
 	end
 
-	if name == "Seven" then
-		self.controller:setTab(TAB_KEYS.Seven)
+	if TAB_KEYS[name] then
+		self.controller:setTab(TAB_KEYS[name])
 		return true
 	end
 
@@ -192,6 +197,36 @@ function InputController.handleKey(self: any, keyCode: any): boolean
 	return false
 end
 
+-- Annule les gestes lors d'une perte de focus ou de l'ouverture d'un menu.
+function InputController.cancelMovement(self: any): ()
+	table.clear(self.held)
+	self.drag = nil
+	self.velocity.x, self.velocity.y = 0, 0
+	self.lastClick = nil
+end
+
+-- Les touches maintenues déplacent la caméra en continu, avec accélération et freinage courts.
+function InputController.step(self: any, dt: number): ()
+	if self.controller.state.menuOpen or (self.app.editor and self.app.editor.editing)
+		or game:GetService("UserInputService"):GetFocusedTextBox() then
+		self:cancelMovement()
+		return
+	end
+	local x, y = 0, 0
+	for key in pairs(self.held) do
+		x += PAN_KEYS[key][1]
+		y += PAN_KEYS[key][2]
+	end
+	local length = math.max(1, math.sqrt(x*x+y*y))
+	local seconds = math.min(dt, 0.05)
+	local alpha = 1 - math.exp(-20*seconds)
+	self.velocity.x += (x/length-self.velocity.x)*alpha
+	self.velocity.y += (y/length-self.velocity.y)*alpha
+	if self.camera and (math.abs(self.velocity.x)+math.abs(self.velocity.y) > 0.001) then
+		self.camera:panScreen(self.velocity.x*600*seconds, self.velocity.y*600*seconds)
+	end
+end
+
 function InputController.mount(self: any): ()
 	local UserInputService = game:GetService("UserInputService")
 
@@ -203,36 +238,66 @@ function InputController.mount(self: any): ()
 			self.ctrl = true
 			return
 		end
-		if processed then
+		if processed or UserInputService:GetFocusedTextBox() then
 			return
 		end
+		if self.controller.state.menuOpen or (self.app.editor and self.app.editor.editing) then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			self:handleClick()
+			local position = input.Position or UserInputService:GetMouseLocation()
+			if not self.app:isHudAt(position) then
+				self.drag = { start = position, last = position, moved = false }
+			end
 			return
 		end
 		if input.KeyCode then
+			local name = input.KeyCode.Name
+			if PAN_KEYS[name] and not (self.ctrl and name == "S") then self.held[name] = true return end
 			self:handleKey(input.KeyCode)
 		end
 	end)
 
 	self.endConnection = UserInputService.InputEnded:Connect(function(input: any)
+		if input and input.KeyCode then self.held[input.KeyCode.Name] = nil end
+		if input and input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if self.drag and not self.drag.moved then self:handleClick() end
+			self.drag = nil
+		end
 		if input and (input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl) then
 			self.ctrl = false
 		end
 	end)
 
-	self.changedConnection = UserInputService.InputChanged:Connect(function(input: any)
+	self.changedConnection = UserInputService.InputChanged:Connect(function(input: any, processed: boolean)
 		if input == nil or self.camera == nil then
 			return
 		end
+		if self.controller.state.menuOpen or (self.app.editor and self.app.editor.editing) then self:cancelMovement() return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement and self.drag then
+			local drag = self.drag
+			local position = input.Position
+			local dx, dy = position.X - drag.start.X, position.Y - drag.start.Y
+			if not drag.moved and dx*dx+dy*dy < 16 then return end
+			drag.moved = true
+			self.lastClick = nil
+			if not processed and not self.app:isHudAt(position) then
+				self.camera:panScreen(drag.last.X-position.X, drag.last.Y-position.Y)
+			end
+			drag.last = position
+		end
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
+			if processed or self.app:isHudAt(UserInputService:GetMouseLocation()) then return end
 			local amount = input.Position and input.Position.Z or 0
 			self.camera:zoom(-amount * Config.CAMERA_ZOOM_STEP)
 		end
 	end)
+	self.frameConnection = game:GetService("RunService").RenderStepped:Connect(function(dt) self:step(dt) end)
+	self.focusConnection = UserInputService.WindowFocusReleased:Connect(function() self.ctrl = false self:cancelMovement() end)
 end
 
 function InputController.unmount(self: any): ()
+	self:cancelMovement()
+	if self.frameConnection then self.frameConnection:Disconnect() end
+	if self.focusConnection then self.focusConnection:Disconnect() end
 	if self.connection then
 		self.connection:Disconnect()
 		self.connection = nil

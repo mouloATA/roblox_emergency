@@ -15,20 +15,14 @@
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Constants = require(Shared:WaitForChild("Constants"))
+local City = require(Shared:WaitForChild("City"))
 
 local UI = game:GetService("Players").LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("ERSClient"):WaitForChild("UI")
 local Theme = require(UI:WaitForChild("Theme"))
+local StreetModels = require(UI:WaitForChild("StreetModels"))
+local StreetTraffic = require(UI:WaitForChild("StreetTraffic"))
 
 local SceneView = {}
-
-local PARTICULE_COLOR = {
-	fire = Color3.fromRGB(196, 52, 40),
-	medical = Color3.fromRGB(240, 240, 240),
-	police = Color3.fromRGB(64, 104, 220),
-	technical = Color3.fromRGB(214, 168, 64),
-	logistics = Color3.fromRGB(120, 176, 140),
-	command = Color3.fromRGB(190, 120, 200),
-}
 
 local function makePart(parent: any, name: string, size: Vector3, color: Color3, material: Enum.Material?, transparency: number?): Part
 	local part = Instance.new("Part")
@@ -48,25 +42,16 @@ local function makePart(parent: any, name: string, size: Vector3, color: Color3,
 	return part
 end
 
--- Positionne les pièces d'un engin autour de son point de carte, avec cap.
+-- Un seul déplacement rigide pour toute la carrosserie, roues et accessoires.
 local function renderVehicle(self: any, entry: any): ()
-	local scale = self.scale
-	local centerX = entry.x * scale
-	local centerZ = entry.z * scale
-	local cosH = math.cos(entry.heading)
-	local sinH = math.sin(entry.heading)
-	for _, item in ipairs(entry.parts) do
-		local ox, oy, oz = item.ox, item.oy, item.oz
-		item.part.Position = Vector3.new(
-			centerX + ox * cosH + oz * sinH,
-			oy,
-			centerZ - ox * sinH + oz * cosH
-		)
-		item.part.Orientation = Vector3.new(0, math.deg(entry.heading), 0)
-	end
-	entry.ring.Position = Vector3.new(centerX, 0.3, centerZ)
+	if entry.drawX == entry.x and entry.drawZ == entry.z and entry.drawHeading == entry.heading then return end
+	entry.drawX, entry.drawZ, entry.drawHeading = entry.x, entry.z, entry.heading
+	local x, z = entry.x * self.scale, entry.z * self.scale
+	entry.folder:PivotTo(CFrame.lookAt(Vector3.new(x, 0, z),
+		Vector3.new(x + math.sin(entry.heading), 0, z + math.cos(entry.heading))))
 end
 
+-- Crée le conteneur local de la scène mobile.
 function SceneView.new(options: any?): any
 	local opts = options or {}
 	local self: any = setmetatable({}, { __index = SceneView })
@@ -85,41 +70,28 @@ function SceneView.new(options: any?): any
 	root.Name = "ERS_Engins"
 	root.Parent = self.workspace
 	self.root = root
+	self.traffic = StreetTraffic.new(root, self.scale)
+	self.buildings = City.build(Config.CITY_SEED).buildings
 
 	return self
 end
 
+-- Installe le modèle de spécialité et le témoin de sélection.
 function SceneView.createVehicle(self: any, vehicle: any): any
-	local folder = Instance.new("Folder")
-	folder.Name = "Engin_" .. tostring(vehicle.id)
-	folder.Parent = self.root
-
 	local service = vehicle.service or "fire"
-	local color = Theme.serviceColor[service] or Theme.colors.info
-	local isLarge = vehicle.typeId == "FPT" or vehicle.typeId == "VPC" or vehicle.typeId == "EPS"
-	local length = isLarge and 5.6 or 4.4
-
-	local body = makePart(folder, "Caisse", Vector3.new(length, 1.5, 2.1), color, Enum.Material.SmoothPlastic, 0)
-	body.Shape = Enum.PartType.Block
-	local cabin = makePart(folder, "Cabine", Vector3.new(2.0, 1.1, 2.0), Color3.fromRGB(232, 232, 232), Enum.Material.SmoothPlastic, 0)
-	local light = makePart(folder, "Gyrophare", Vector3.new(length * 0.42, 0.28, 0.7),
-		PARTICULE_COLOR[service] or Theme.colors.warning, Enum.Material.Neon, 0.85)
-	local ring = makePart(folder, "Selection", Vector3.new(7, 0.22, 7), Theme.colors.active, Enum.Material.Neon, 0.6)
+	local built = StreetModels.vehicle(self.root, "Engin_" .. tostring(vehicle.id), vehicle.typeId, service)
+	local ring = makePart(built.model, "Selection", Vector3.new(8.6, 0.12, 8.6), Theme.colors.active, Enum.Material.Neon, 0.6)
 	ring.Shape = Enum.PartType.Ball
+	ring.Position = Vector3.new(0, 0.43, 0)
 	ring.Transparency = 1
 
 	local entry = {
 		id = vehicle.id,
-		folder = folder,
-		body = body,
-		cabin = cabin,
-		light = light,
+		folder = built.model,
+		typeId = vehicle.typeId,
+		body = built.body,
+		light = built.light,
 		ring = ring,
-		parts = {
-			{ part = body, ox = 0, oy = 1.15, oz = 0 },
-			{ part = cabin, ox = -length * 0.28, oy = 2.15, oz = 0 },
-			{ part = light, ox = length * 0.2, oy = 2.55, oz = 0 },
-		},
 		x = vehicle.x,
 		z = vehicle.z,
 		targetX = vehicle.x,
@@ -134,6 +106,7 @@ function SceneView.createVehicle(self: any, vehicle: any): any
 	return entry
 end
 
+-- Crée le marqueur et le registre des foyers visibles.
 function SceneView.createIncident(self: any, incident: any): any
 	local folder = Instance.new("Folder")
 	folder.Name = "Urgence_" .. tostring(incident.id)
@@ -148,11 +121,51 @@ function SceneView.createIncident(self: any, incident: any): any
 		folder = folder,
 		beacon = beacon,
 		glow = glow,
+		cells = {},
 		x = incident.x,
 		z = incident.z,
 	}
 	self.incidents.entries[incident.id] = entry
 	return entry
+end
+
+-- Place les flammes sur les toits des parcelles bâties et au sol ailleurs.
+local function flameHeight(buildings: {any}, x: number, z: number): number
+	for _, b in ipairs(buildings) do
+		if x >= b.x0 and x <= b.x1 and z >= b.z0 and z <= b.z1 then
+			return b.floors * Config.FLOOR_HEIGHT + 0.7
+		end
+	end
+	return 0.5
+end
+
+local function renderBurningCells(self: any, entry: any, incident: any): ()
+	local active = {}
+	for i, cell in ipairs(incident.fireCells or {}) do
+		if cell.burning and incident.status ~= Constants.INCIDENT_STATUS.FAILED and incident.status ~= Constants.INCIDENT_STATUS.RESOLVED then
+			active[i] = true
+			local node = entry.cells[i]
+			if not node then
+				local anchor = makePart(entry.folder, "Foyer_" .. i, Vector3.new(1, 1, 1), Theme.colors.accent, nil, 1)
+				local fire = Instance.new("Fire")
+				fire.Parent = anchor
+				node = {anchor = anchor, fire = fire}
+				entry.cells[i] = node
+			end
+			if node.x ~= cell.x or node.z ~= cell.z then
+				node.x, node.z = cell.x, cell.z
+				node.anchor.Position = Vector3.new(cell.x * self.scale, flameHeight(self.buildings, cell.x, cell.z), cell.z * self.scale)
+			end
+			node.fire.Size = 3 + math.clamp(cell.heat or 0, 0, 100) * 0.13
+			node.fire.Heat = node.fire.Size * 0.72
+		end
+	end
+	for i, node in pairs(entry.cells) do
+		if not active[i] then
+			node.anchor:Destroy()
+			entry.cells[i] = nil
+		end
+	end
 end
 
 local function incidentVisual(entry: any, incident: any): ()
@@ -184,10 +197,15 @@ end
 	un engin disparu est retiré : aucune instance ne fuit entre deux états.
 ]]
 function SceneView.update(self: any, snapshot: any, state: any): ()
+	StreetTraffic.sync(self.traffic, snapshot)
 	local seenVehicles = {}
 	for _, vehicle in ipairs(snapshot.vehicles or {}) do
 		seenVehicles[vehicle.id] = true
 		local entry = self.vehicles.entries[vehicle.id]
+		if entry and entry.typeId ~= vehicle.typeId then
+			entry.folder:Destroy()
+			entry = nil
+		end
 		if not entry then
 			entry = self:createVehicle(vehicle)
 		end
@@ -207,8 +225,8 @@ function SceneView.update(self: any, snapshot: any, state: any): ()
 
 		local engaged = vehicle.status == Constants.VEHICLE_STATUS.DISPATCHED
 			or vehicle.status == Constants.VEHICLE_STATUS.ON_SCENE
+			or vehicle.status == Constants.VEHICLE_STATUS.TRANSPORTING
 		entry.light.Transparency = engaged and 0 or 0.85
-		entry.light.Color = PARTICULE_COLOR[vehicle.service] or Theme.colors.warning
 
 		if not self.mounted then
 			entry.x = entry.targetX
@@ -236,6 +254,7 @@ function SceneView.update(self: any, snapshot: any, state: any): ()
 		entry.z = incident.z
 		entry.scale = self.scale
 		incidentVisual(entry, incident)
+		renderBurningCells(self, entry, incident)
 	end
 
 	for id, entry in pairs(self.incidents.entries) do
@@ -250,6 +269,7 @@ end
 function SceneView.step(self: any, dt: number?): ()
 	local delta = math.clamp(dt or 0.016, 0, 0.5)
 	local alpha = math.min(1, delta * 7)
+	StreetTraffic.step(self.traffic, delta)
 	for _, entry in pairs(self.vehicles.entries) do
 		entry.x += (entry.targetX - entry.x) * alpha
 		entry.z += (entry.targetZ - entry.z) * alpha
