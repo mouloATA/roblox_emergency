@@ -29,6 +29,7 @@ function BudgetPanel.create(parent: any, context: any): any
 		catalogue.CanvasPosition = Vector2.new(0, 0)
 		controller:render()
 	end, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, 36) })
+	local priceSort = Nav.priceSort(root, Vehicles.list, categories, catalogue, function() controller:render() end)
 	local summary = Widgets.label(root, "Resume", "", {
 		Position = UDim2.fromOffset(0, 82), Size = UDim2.new(1, -145, 0, 34), TextSize = Theme.text.small,
 		TextColor3 = Theme.colors.textDim, TextWrapped = true,
@@ -85,13 +86,14 @@ function BudgetPanel.create(parent: any, context: any): any
 		balance.Text = Theme.money(snapshot.budget or 0)
 		balance.TextColor3 = (snapshot.budget or 0) >= 0 and Theme.colors.success or Theme.colors.danger
 		categories.root.Visible = shopping
+		priceSort.setVisible(shopping)
 		summary.Visible = shopping
 		catalogue.Visible = shopping
 		ledger.Visible = not shopping
 		pass.Visible = shopping and multiple
 		Widgets.setEnabled(pass, multiple and turn.owner == controller.player.UserId)
 		if shopping then
-			local offers = Nav.byService(Vehicles.list, categories.value)
+			local offers = priceSort.offers()
 			summary.Size = UDim2.new(1, multiple and -145 or 0, 0, 34)
 			summary.Text = string.format("%d modèles  ·  Flotte %d/%d", #offers, #(snapshot.vehicles or {}), Config.MAX_FLEET)
 			if multiple then summary.Text ..= string.format("  ·  Tour de %s (%d s)", turn.name, turn.remaining) end

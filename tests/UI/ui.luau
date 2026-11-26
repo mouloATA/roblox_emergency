@@ -452,8 +452,30 @@ local function use(panel, name)
 	click(node)
 end
 
+local function pricesInOrder(list, descending)
+	local displayed = {}
+	for _, row in ipairs(list:GetChildren()) do
+		local label = row:FindFirstChild("Cout")
+		if label then
+			local digits = label.Text:gsub("[^0-9]", "")
+			displayed[row.LayoutOrder] = { price = assert(tonumber(digits)), id = row.Name }
+		end
+	end
+	for i = 2, #displayed do
+		local a, b = displayed[i - 1], displayed[i]
+		if a.price == b.price and a.id >= b.id then return false end
+		if descending and a.price < b.price or not descending and a.price > b.price then return false end
+	end
+	return #displayed >= 2
+end
+
 do
 	local shop = app.panels.budget
+	local catalogue = Widgets.find(shop.root, "Catalogue")
+	check("véhicules du moins cher au plus cher à l’ouverture", pricesInOrder(catalogue, false))
+	catalogue.CanvasPosition = Vector2.new(0, 180)
+	use(shop.root, "TriPrix_desc")
+	check("prix décroissants et retour au début du catalogue", pricesInOrder(catalogue, true) and catalogue.CanvasPosition.Y == 0)
 	for _, service in ipairs({"fire","medical","police","technical","command","logistics"}) do
 		use(shop.root, "ServiceAchat_" .. service)
 		local exact = true
@@ -461,6 +483,7 @@ do
 			if (shop.rows.entries[def.id] ~= nil) ~= (service == def.service) then exact = false end
 		end
 		check("catalogue exact du service " .. service, exact)
+		check("tri décroissant conservé dans le service " .. service, pricesInOrder(catalogue, true))
 	end
 	controller:openCategory("medical")
 	use(app.panels.vehicles.root, "OuvrirCatalogue")
@@ -475,6 +498,9 @@ do
 	local row = shop.rows.entries.VSAV.instance
 	controller:applySnapshot(SnapshotService.build(world))
 	check("filtre et ligne conservés après un snapshot", shop.rows.entries.VSAV.instance == row and not shop.rows.entries.FPT)
+	check("prix décroissants après actualisation", pricesInOrder(catalogue, true))
+	use(shop.root, "TriPrix_asc")
+	check("retour aux prix croissants dans le même service", pricesInOrder(catalogue, false) and not shop.rows.entries.FPT)
 	controller:openCategory("all")
 	use(app.panels.vehicles.root, "OuvrirCatalogue")
 end
@@ -1097,6 +1123,14 @@ do
 	click(app.tabs.personnel)
 	local panel = app.panels.personnel.root
 	use(panel, "VuePersonnel_recruit")
+	local offers = Widgets.find(panel, "Offres")
+	check("recrutement par tarif croissant à l’ouverture", pricesInOrder(offers, false))
+	use(panel, "TriPrix_desc")
+	check("recrutement par tarif décroissant", pricesInOrder(offers, true))
+	use(panel, "ServicePersonnel_medical")
+	check("recrutement médical trié par tarif décroissant", pricesInOrder(offers, true) and not Widgets.find(offers, "Offre_technician"))
+	use(panel, "TriPrix_asc")
+	check("recrutement médical trié par tarif croissant", pricesInOrder(offers, false))
 	use(panel, "ServicePersonnel_technical")
 	check("le recrutement technique isole le technicien", Widgets.find(panel, "Offre_technician") and not Widgets.find(panel, "Offre_doctor"))
 	local offer = Widgets.find(panel, "Offre_technician")

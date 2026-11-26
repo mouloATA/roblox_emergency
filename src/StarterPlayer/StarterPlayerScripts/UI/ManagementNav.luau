@@ -65,6 +65,35 @@ function ManagementNav.byService(items: any, service: string): any
 	return result
 end
 
+-- Classe les offres du service au prix numérique. La majoration de garde est commune à toutes les offres.
+function ManagementNav.priceSort(parent: any, catalog: any, services: any, list: any, onChange: () -> ()): any
+	local sorted = table.clone(catalog)
+	local function order(direction: string)
+		table.sort(sorted, function(a, b)
+			if a.cost == b.cost then return a.id < b.id end
+			if direction == "desc" then return a.cost > b.cost end
+			return a.cost < b.cost
+		end)
+	end
+	order("asc")
+	local options = { { "asc", "Prix croissant", 106 }, { "desc", "Prix décroissant", 124 } }
+	local width = options[1][3] + options[2][3] + 5
+	local control = ManagementNav.strip(parent, "TriPrix", options, function(direction)
+		order(direction)
+		list.CanvasPosition = Vector2.new(0, 0)
+		onChange()
+	end, {
+		Position = UDim2.new(1, -width, 0, 42), Size = UDim2.fromOffset(width, 36),
+	})
+	return {
+		offers = function() return ManagementNav.byService(sorted, services.value) end,
+		setVisible = function(visible: boolean)
+			control.root.Visible = visible
+			services.root.Size = UDim2.new(1, visible and -(width + 10) or 0, 0, 36)
+		end,
+	}
+end
+
 -- Présente une offre avec son prix courant et une action distincte des caractéristiques.
 function ManagementNav.offer(parent: any, rowId: string, actionId: string, title: string, detail: string, service: string, verb: string, action: () -> ()): any
 	local row = Widgets.frame(parent, rowId, {

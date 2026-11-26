@@ -51,6 +51,7 @@ function PersonnelPanel.create(parent: any, context: any): any
 		recruits.CanvasPosition = Vector2.new(0, 0)
 		controller:render()
 	end, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, 36) })
+	local priceSort = Nav.priceSort(root, Recruitment.profiles, services, recruits, function() controller:render() end)
 
 	-- Deux colonnes : effectifs à gauche, fiche du membre à droite. Le détail
 	-- défile dans sa colonne pour ne jamais recouvrir la barre inférieure.
@@ -227,6 +228,7 @@ function PersonnelPanel.create(parent: any, context: any): any
 		latest = snapshot
 		local personnel = snapshot.personnel or {}
 		local recruiting = pages.value == "recruit"
+		priceSort.setVisible(recruiting)
 		rosterBody.Visible = not recruiting
 		recruits.Visible = recruiting
 		local turn = snapshot.purchase or {}
@@ -234,7 +236,7 @@ function PersonnelPanel.create(parent: any, context: any): any
 			choosingFor = nil
 			subtitle.Text = Theme.money(snapshot.budget or 0)
 			if (turn.count or 0) > 1 then subtitle.Text ..= " · Tour de " .. turn.name end
-			recruitRows.update(Nav.byService(Recruitment.profiles, services.value))
+			recruitRows.update(priceSort.offers())
 			return
 		end
 		local filtered = Nav.byService(personnel, services.value)

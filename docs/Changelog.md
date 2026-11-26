@@ -7,6 +7,7 @@ Le projet suit une version `MAJEUR.MINEUR.CORRECTIF`.
 
 ### Interface de la caserne
 
+- Les achats de véhicules et le recrutement proposent un tri par prix croissant ou décroissant. Chaque catalogue conserve son choix de tri pendant la consultation des services.
 - La navigation regroupe opérations, caserne et coordination. Les achats et les finances ont des vues distinctes. Les 34 véhicules se filtrent par service, avec le solde, le prix réel et les conditions d’achat visibles.
 - Les vues Effectif et Recruter partagent le filtre de service. Chaque fiche affiche les qualifications et permet d’affecter l’agent directement à un engin admissible.
 - Le magasin classe le stock par usage. On peut y choisir un véhicule et consulter le poids et les emplacements occupés à bord. Une confirmation apparaît dans l’en-tête après une action de gestion.
