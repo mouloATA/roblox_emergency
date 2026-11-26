@@ -20,7 +20,7 @@ Theme.colors = {
 	border = Color3.fromRGB(60, 72, 84),
 	text = Color3.fromRGB(233, 239, 243),
 	textDim = Color3.fromRGB(150, 164, 176),
-	textMuted = Color3.fromRGB(108, 122, 134),
+	textMuted = Color3.fromRGB(180, 193, 203),
 	accent = Color3.fromRGB(216, 96, 50),
 	danger = Color3.fromRGB(200, 64, 64),
 	success = Color3.fromRGB(80, 178, 118),
@@ -56,6 +56,8 @@ Theme.statusColor = {
 	available = Theme.colors.success,
 	dispatched = Theme.colors.warning,
 	onscene = Theme.colors.accent,
+	transporting = Theme.colors.warning,
+	handover = Theme.colors.info,
 	returning = Theme.colors.info,
 	maintenance = Theme.colors.textMuted,
 	pending = Theme.colors.warning,
@@ -76,7 +78,7 @@ Theme.text = {
 	subtitle = 17,
 	body = 15,
 	small = 13,
-	tiny = 11,
+	tiny = 12,
 }
 
 Theme.sizes = {

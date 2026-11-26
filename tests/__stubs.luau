@@ -245,6 +245,23 @@ local DEFAULTS = {
 local InstanceMT = {}
 local methods = {}
 
+-- Double de la synthèse vocale ; mémorise les commandes de lecture.
+function methods:Play()
+	assert(self.ClassName == "AudioTextToSpeech")
+	self.IsPlaying = true
+end
+
+function methods:Pause()
+	assert(self.ClassName == "AudioTextToSpeech")
+	self.IsPlaying = false
+end
+
+-- Mémorise la pose du modèle pour les assertions de sens et de mouvement.
+function methods:PivotTo(target)
+	assert(self.ClassName == "Model")
+	self.WorldPivot = target
+end
+
 function methods:GetChildren()
 	local copy = {}
 	for _, child in ipairs(self.__children) do

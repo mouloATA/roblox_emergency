@@ -57,6 +57,8 @@ export type VehicleType = {
 	driverRequired: boolean,
 	qualifications: { string },
 	capabilities: Capabilities,
+	waterCapacity: number?,
+	patientCapacity: number?,
 	equipmentSlots: number,
 	capacity: number,
 	defaultEquipment: { { id: string, quantity: number } },
@@ -83,6 +85,8 @@ export type IncidentStep = {
 	seconds: number,
 }
 
+export type FireCell = { x: number, z: number, material: string, heat: number, burning: boolean, spent: boolean, fuel: number }
+
 export type IncidentType = {
 	id: string,
 	name: string,
@@ -101,6 +105,8 @@ export type IncidentType = {
 }
 
 export type Personnel = {
+	level: number,
+	hireCost: number,
 	id: number,
 	name: string,
 	grade: string,
@@ -123,7 +129,12 @@ export type Vehicle = {
 	home: Position,
 	crew: { number },
 	equipment: { [string]: number },
-	incidentId: number?,
+	fieldOrder: string?,
+	fieldActivity: string?,
+	water: number?,
+	patients: number?,
+	handoverAt: number?,
+	incidentId: string?,
 	route: Route?,
 	repairRemaining: number,
 }
@@ -143,6 +154,12 @@ export type Incident = {
 	underpoweredFor: number,
 	victims: number,
 	savedVictims: number,
+	fireCells: { FireCell },
+	waterUsed: number,
+	rescued: number,
+	extricated: number,
+	inTransit: number,
+	evacuating: boolean?,
 	closedAt: number?,
 	outcome: string?,
 }
@@ -194,10 +211,11 @@ export type World = {
 	catalogs: any,
 	budget: number,
 	transactions: { Transaction },
+	purchaseTurn: { owner: number?, count: number, untilClock: number }?,
 	vehicles: { [number]: Vehicle },
 	personnel: { [number]: Personnel },
 	equipmentStock: { [string]: number },
-	incidents: { [number]: Incident },
+	incidents: { [string]: Incident },
 	groups: { [number]: Group },
 	sectors: { [number]: Sector },
 	players: { [number]: Player },
@@ -229,7 +247,12 @@ export type VehicleSnapshot = {
 	crewCount: number,
 	crewRequired: number,
 	equipment: { { id: string, name: string, quantity: number } },
-	incidentId: number?,
+	incidentId: string?,
+	fieldChoices: { string },
+	fieldOrder: string?,
+	water: number,
+	patientCapacity: number,
+	patients: number,
 	route: Route?,
 }
 
@@ -245,6 +268,10 @@ export type IncidentSnapshot = {
 	z: number,
 	victims: number,
 	stepIndex: number,
+	fireCells: { FireCell },
+	waterUsed: number,
+	inTransit: number,
+	savedVictims: number,
 	stepLabel: string,
 	stepProgress: number,
 	deadlineIn: number,
@@ -254,16 +281,22 @@ export type IncidentSnapshot = {
 }
 
 export type Snapshot = {
+	mission: {id: string, name: string, status: string, objectives: {{label: string, incidentId: string?, status: string}}}?,
+	progression: {
+		score: number, rating: number?, civilianLosses: number, civilianPenalty: number,
+		awards: {{id: string, name: string, condition: string, current: number, target: number, earned: boolean}},
+	},
 	version: string,
 	time: number,
 	clock: string,
 	budget: number,
 	spent: number,
 	earned: number,
+	purchase: { owner: number?, name: string, count: number, remaining: number, surcharge: number },
 	finished: boolean,
 	players: { { userId: number, name: string, role: string, roleLabel: string } },
 	vehicles: { VehicleSnapshot },
-	personnel: { { id: number, name: string, grade: string, service: string, status: string, vehicleId: number?, fatigue: number, health: number, qualifications: { string } } },
+	personnel: { { id: number, name: string, grade: string, service: string, status: string, vehicleId: number?, fatigue: number, health: number, level: number, transferValue: number, qualifications: { string } } },
 	incidents: { IncidentSnapshot },
 	groups: { { id: number, name: string, service: string?, vehicles: { number }, sectorId: number? } },
 	sectors: { Sector },

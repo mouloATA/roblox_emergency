@@ -64,12 +64,22 @@ function CameraController.apply(self: any): ()
 	local scale = self.config.WORLD_SCALE
 	local lookAt = Vector3.new(self.target.x * scale, 0, self.target.z * scale)
 	self.camera.CameraType = Enum.CameraType.Scriptable
+	self.camera.FieldOfView = self.config.CAMERA_FOV
 	self.camera.CFrame = CFrame.lookAt(self:position(), lookAt)
 end
 
 function CameraController.mount(self: any): ()
 	self.mounted = true
 	self:apply()
+end
+
+-- Roblox peut remplacer la caméra ou reprendre sa propriété au chargement du personnage.
+-- N’écrit la pose que lorsqu’il faut rendre le contrôle à la vue tactique.
+function CameraController.syncCamera(self: any, current: any): ()
+	if self.mounted and current and (self.camera ~= current or current.CameraType ~= Enum.CameraType.Scriptable) then
+		self.camera = current
+		self:apply()
+	end
 end
 
 -- Déplace le point visé (unités de carte).

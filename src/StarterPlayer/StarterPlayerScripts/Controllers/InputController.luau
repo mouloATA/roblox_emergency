@@ -27,6 +27,7 @@ local TAB_KEYS = {
 	Five = "command",
 	Six = "budget",
 	Seven = "roles",
+	Eight = "missions",
 }
 
 local DIGIT_SLOTS = {
@@ -126,8 +127,8 @@ function InputController.handleKey(self: any, keyCode: any): boolean
 		return true
 	end
 
-	if name == "Seven" then
-		self.controller:setTab(TAB_KEYS.Seven)
+	if TAB_KEYS[name] then
+		self.controller:setTab(TAB_KEYS[name])
 		return true
 	end
 

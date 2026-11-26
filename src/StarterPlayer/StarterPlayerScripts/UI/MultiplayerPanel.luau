@@ -151,7 +151,7 @@ function MultiplayerPanel.create(parent: any, context: any): any
 		local snapshot = latestSnapshot
 		local holderPlayer = nil
 		for _, player in ipairs(snapshot.players or {}) do
-			if player.role == role.id then
+			if player.connected ~= false and player.role == role.id then
 				holderPlayer = player
 			end
 		end

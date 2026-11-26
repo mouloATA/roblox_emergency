@@ -14,7 +14,15 @@ local Constants = require(Shared:WaitForChild("Constants"))
 local TimeUtil = require(Utilities:WaitForChild("TimeUtil"))
 local Permissions = require(Shared:WaitForChild("Catalogs"):WaitForChild("Permissions"))
 
+local PurchaseService = require(game:GetService("ServerScriptService"):WaitForChild("ERS"):WaitForChild("Services"):WaitForChild("PurchaseService"))
+local Recruitment = require(Shared:WaitForChild("Catalogs"):WaitForChild("Recruitment"))
+local Services = game:GetService("ServerScriptService"):WaitForChild("ERS"):WaitForChild("Services")
+local FieldService = require(Services:WaitForChild("FieldService"))
+local HospitalService = require(Services:WaitForChild("HospitalService"))
 local SnapshotService = {}
+local Services = game:GetService("ServerScriptService"):WaitForChild("ERS"):WaitForChild("Services")
+local ProgressionService = require(Services:WaitForChild("ProgressionService"))
+local MissionService = require(Services:WaitForChild("MissionService"))
 
 -- Vérifie récursivement qu'une valeur est sérialisable par Roblox.
 function SnapshotService.isSerializable(value: any, seen: any?, depth: number?): boolean
@@ -154,6 +162,14 @@ function SnapshotService.build(world: any): any
 			incidentId = vehicle.incidentId,
 			route = vehicle.route and copyTable(vehicle.route) or nil,
 			repairRemaining = vehicle.repairRemaining,
+			fieldOrder = vehicle.fieldOrder,
+			fieldActivity = vehicle.fieldActivity,
+			fieldChoices = FieldService.choices(world, vehicle),
+			water = math.floor(vehicle.water or (typeDef and typeDef.waterCapacity) or 0),
+			waterCapacity = typeDef and typeDef.waterCapacity or 0,
+			patientCapacity = HospitalService.capacity(world, vehicle),
+			patients = vehicle.patients or 0,
+			handoverIn = vehicle.handoverAt and math.max(0, vehicle.handoverAt - world.time) or nil,
 		})
 	end
 
@@ -170,6 +186,8 @@ function SnapshotService.build(world: any): any
 			fatigue = person.fatigue,
 			health = person.health,
 			experience = person.experience,
+			level = person.level or 0,
+			transferValue = Recruitment.transferValue(person),
 			qualifications = qualificationLabels(world, person),
 		})
 	end
@@ -190,11 +208,13 @@ function SnapshotService.build(world: any): any
 		end
 		table.sort(onScene)
 
+		local cells = {}
+		for _, cell in ipairs(incident.fireCells or {}) do table.insert(cells, copyTable(cell)) end
 		table.insert(incidents, {
 			id = incident.id,
 			typeId = incident.typeId,
-			name = typeDef and typeDef.name or incident.typeId,
-			briefing = typeDef and typeDef.briefing or "",
+			name = incident.missionLabel or (typeDef and typeDef.name) or incident.typeId,
+			briefing = incident.missionBriefing or (typeDef and typeDef.briefing) or "",
 			service = typeDef and typeDef.service or "unknown",
 			severity = incident.severity,
 			status = incident.status,
@@ -202,9 +222,15 @@ function SnapshotService.build(world: any): any
 			z = incident.position.z,
 			victims = incident.victims,
 			savedVictims = incident.savedVictims,
+			fireCells = cells,
+			waterUsed = math.floor(incident.waterUsed or 0),
+			rescued = incident.rescued, rescueTarget = incident.rescueTarget,
+			extricated = incident.extricated, extricationTarget = incident.extricationTarget,
+			inTransit = incident.inTransit, evacuating = incident.evacuating == true,
 			stepIndex = incident.stepIndex,
 			stepCount = typeDef and #typeDef.steps or 0,
-			stepLabel = step and step.label or "Clôture",
+			fieldStep = FieldService.actionForStep(step),
+			stepLabel = step and step.label or (if incident.evacuating then "Transport aux urgences" else "Clôture"),
 			stepProgress = incident.stepProgress,
 			stepSeconds = step and step.seconds or 0,
 			deadlineIn = math.max(0, incident.deadline - world.time),
@@ -280,6 +306,7 @@ function SnapshotService.build(world: any): any
 		paused = (world.timeScale or 1) == 0,
 		clock = TimeUtil.clock(world),
 		budget = world.budget,
+		purchase = PurchaseService.state(world),
 		spent = world.stats.spent,
 		earned = world.stats.earned,
 		finished = world.finished,
@@ -292,6 +319,8 @@ function SnapshotService.build(world: any): any
 		stock = stockList(world),
 		log = log,
 		stats = copyTable(world.stats),
+		progression = ProgressionService.snapshot(world),
+		mission = MissionService.snapshot(world),
 		alerts = alerts,
 	}
 end

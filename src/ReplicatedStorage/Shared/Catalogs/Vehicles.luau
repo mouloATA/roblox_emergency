@@ -14,6 +14,7 @@ Vehicles.list = {
 	-- ═══════════════════ INCENDIE ═══════════════════
 	{
 		id = "FPT",
+		waterCapacity = 1800,
 		name = "Fourgon Pompe Tonne",
 		category = "incendie",
 		service = "fire",
@@ -39,6 +40,7 @@ Vehicles.list = {
 	},
 	{
 		id = "FPTL",
+		waterCapacity = 1100,
 		name = "Fourgon Pompe Tonne Léger",
 		category = "incendie",
 		service = "fire",
@@ -62,6 +64,7 @@ Vehicles.list = {
 	},
 	{
 		id = "FPTSR",
+		waterCapacity = 1200,
 		name = "Fourgon Pompe Tonne Secours Routier",
 		category = "incendie",
 		service = "fire",
@@ -129,6 +132,7 @@ Vehicles.list = {
 	},
 	{
 		id = "VPI",
+		waterCapacity = 400,
 		name = "Véhicule de Première Intervention",
 		category = "incendie",
 		service = "fire",
@@ -151,6 +155,7 @@ Vehicles.list = {
 	},
 	{
 		id = "CCF",
+		waterCapacity = 3400,
 		name = "Camion Citerne Feux de Forêts",
 		category = "incendie",
 		service = "fire",
@@ -175,6 +180,7 @@ Vehicles.list = {
 	-- ═══════════════════ SECOURS À PERSONNE ═══════════════════
 	{
 		id = "VSAV",
+		patientCapacity = 1,
 		name = "Véhicule de Secours et d'Assistance aux Victimes",
 		category = "secours",
 		service = "medical",
@@ -199,6 +205,7 @@ Vehicles.list = {
 	},
 	{
 		id = "AMBULANCE",
+		patientCapacity = 1,
 		name = "Ambulance privée",
 		category = "secours",
 		service = "medical",
@@ -265,6 +272,7 @@ Vehicles.list = {
 	},
 	{
 		id = "VSS",
+		patientCapacity = 2,
 		name = "Véhicule de Soutien Sanitaire",
 		category = "secours",
 		service = "medical",
@@ -598,6 +606,7 @@ Vehicles.list = {
 	-- ═══════════════════ RENFORTS SPÉCIALISÉS ═══════════════════
 	{
 		id = "UMH",
+		patientCapacity = 2,
 		name = "Unité Mobile Hospitalière",
 		category = "secours",
 		service = "medical",
@@ -668,6 +677,7 @@ Vehicles.list = {
 	},
 	{
 		id = "CCGC",
+		waterCapacity = 6500,
 		name = "Camion-Citerne Grande Capacité",
 		category = "incendie",
 		service = "fire",

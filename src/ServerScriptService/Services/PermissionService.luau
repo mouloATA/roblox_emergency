@@ -26,7 +26,7 @@ end
 
 local function roleHolder(world: any, role: string, exceptUserId: number?): any?
 	for _, player in pairs(world.players) do
-		if player.role == role and player.userId ~= exceptUserId then
+		if player.connected and player.role == role and player.userId ~= exceptUserId then
 			return player
 		end
 	end
@@ -40,6 +40,10 @@ function PermissionService.seed(world: any, userId: number, name: string): any
 	local existing = world.players[userId]
 	if existing then
 		existing.name = name
+		if not existing.connected and roleHolder(world, existing.role, userId) then
+			existing.role = Constants.ROLE.OBSERVATEUR
+		end
+		existing.connected = true
 		return Result.ok("Joueur reconnecté.", existing)
 	end
 

@@ -275,6 +275,40 @@ check("périmètre observateur", PermissionService.canVehicle(world, 1003, Const
 
 -- ─────────────────────────────────────────────────────────────
 print("")
+do
+	suite("Tours d'achat, formation et budget partagé")
+	local second = {UserId = 1004, Name = "Commandement"}
+	check("commandement prend un tour", send(second, "claim_role", {role = Constants.ROLE.COMMANDEMENT}).ok)
+	local turn = SnapshotService.build(world).purchase
+	check("direction en premier", turn.owner == chief.UserId and turn.count == 2)
+	local initial = world.budget
+	check("achat hors tour refusé", not send(second, "recruit_personnel", {profileId = "technician"}).ok)
+	check("profil invalide refusé", not send(chief, "recruit_personnel", {profileId = {}}).ok)
+	check("aucun débit sur refus", world.budget == initial and world.purchaseTurn.owner == chief.UserId)
+	local hire = send(chief, "recruit_personnel", {profileId = "technician", price = 0})
+	check("technicien recruté au prix serveur", hire.ok and hire.data.qualifications.TECHNICIEN
+		and world.budget == initial - (1400 + turn.surcharge))
+	turn = SnapshotService.build(world).purchase
+	check("tour suivant et hausse effective", turn.owner == second.UserId and turn.surcharge == 60)
+	check("direction ne peut doubler son tour", not send(chief, "buy_vehicle", {typeId = "VSAV"}).ok)
+	check("observateur ne peut passer", not send(observer, "pass_purchase_turn", {}).ok)
+	local personId = hire.data.id
+	check("formation niveau 1", send(second, "train_personnel", {personId = personId}).ok and hire.data.level == 1)
+	check("formation niveau 2", send(chief, "train_personnel", {personId = personId}).ok and hire.data.level == 2)
+	check("formation niveau 3", send(second, "train_personnel", {personId = personId}).ok and hire.data.level == 3)
+	local before = world.budget
+	check("niveau plafond sans débit ni rotation", not send(chief, "train_personnel", {personId = personId}).ok
+		and world.budget == before and world.purchaseTurn.owner == chief.UserId)
+	check("passage manuel", send(chief, "pass_purchase_turn", {}).ok and world.purchaseTurn.owner == second.UserId)
+	world.purchaseTurn.untilClock = os.clock() - 1
+	check("passage à l'expiration", SnapshotService.build(world).purchase.owner == chief.UserId)
+	world.players[chief.UserId].connected = false
+	check("déconnexion du titulaire libère le tour", SnapshotService.build(world).purchase.owner == second.UserId)
+	check("revente à moitié du prix payé", send(second, "transfer_personnel", {personId = personId}).ok
+		and not world.personnel[personId] and world.budget == before + math.floor(hire.data.hireCost / 2))
+	check("double cession refusée", not send(second, "transfer_personnel", {personId = personId}).ok)
+end
+
 print(string.format("  Multijoueur : %d réussite(s), %d échec(s)", passed, failed))
 if failed > 0 then
 	error(string.format("%d test(s) multijoueur en échec", failed))

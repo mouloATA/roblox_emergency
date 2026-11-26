@@ -22,7 +22,7 @@ Permissions.roles = {
 	},
 	[Constants.ROLE.COMMANDEMENT] = {
 		label = "Commandement",
-		description = "Engage les moyens de tous les services, crée groupes et secteurs.",
+		description = "Engage tous les services, coordonne les secteurs et partage les tours d’achat.",
 		actions = {
 			[A.VIEW] = true,
 			[A.DISPATCH] = true,
@@ -31,7 +31,9 @@ Permissions.roles = {
 			[A.EQUIPMENT] = true,
 			[A.REPAIR] = true,
 			[A.COMMAND] = true,
+			[A.BUY_VEHICLE] = true,
 			[A.SET_TIME] = true,
+			[A.START_MISSION] = true,
 		},
 		services = "all",
 	},

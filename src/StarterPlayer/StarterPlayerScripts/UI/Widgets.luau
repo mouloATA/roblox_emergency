@@ -87,6 +87,7 @@ function Widgets.label(parent: any, name: string, text: string, props: any?): an
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.RichText = false
 	apply(label, props)
+	label.TextSize = math.max(Theme.text.tiny, label.TextSize)
 	label.Parent = parent
 	return label
 end
@@ -104,6 +105,7 @@ function Widgets.button(parent: any, name: string, text: string, onClick: () -> 
 	button.AutoButtonColor = true
 	button.TextWrapped = false
 	apply(button, props)
+	button.TextSize = math.max(Theme.text.tiny, button.TextSize)
 	button.Active = true
 	baseTransparency[button] = button.BackgroundTransparency
 	Widgets.corner(button, Theme.radius.small)

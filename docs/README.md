@@ -1,6 +1,6 @@
 # Emergency Response Simulator — documentation
 
-**Version 0.3.0 — Phase 2 (réseau routier et catalogues enrichis).**
+**Version locale 0.4.0 — interventions de terrain, missions et progression.**
 
 ERS est une simulation française de commandement des secours sur Roblox :
 réception des alertes, composition des équipages, engagement des engins,
@@ -21,73 +21,37 @@ la scène sont entièrement générées en code.
 | [Comparaison-EM4-CSPIRG.md](Comparaison-EM4-CSPIRG.md) | écarts avec Emergency 4 / MOD CSP-IRG et problèmes constatés |
 | `../AGENTS.md` | contrat de développement (règles non négociables) |
 
-## Prérequis
+## Construire et tester
 
-| Outil | Version vérifiée | État |
-| --- | --- | --- |
-| Roblox Studio | installé sur la machine | présent |
-| Rojo | 7.7.1 (`%APPDATA%\npm\rojo.cmd`) | présent |
-| CLI Luau | `luau.exe` dans `%LOCALAPPDATA%\Temp\opencode\luau` | présent (tests hors Studio) |
-| Node.js / npm | présents | présents |
-| Git | — | **absent** (voir plus bas) |
-
-Installation reproductible :
+Les exécutables portables utilisés pour cette version sont Luau 0.748 et Rojo 7.7.1. Depuis la racine du dépôt, lancez les commandes suivantes dans PowerShell.
 
 ```powershell
-# Rojo (si absent)
-npm install -g rojo@7.7.1
-
-# CLI Luau : télécharger la release Windows et placer luau.exe dans
-#   %LOCALAPPDATA%\Temp\opencode\luau
-# https://github.com/luau-lang/luau/releases
-
-# Git (non effectué pendant la Phase 0)
-winget install --id Git.Git -e
+.\tools\check.ps1
+New-Item -Type Directory -Force build | Out-Null
+& "$env:LOCALAPPDATA\Temp\opencode\rojo\rojo.exe" build -o build\ERS.rbxlx
 ```
 
-## Construire et lancer
+Le fichier local `build/ERS.rbxlx` s’ouvre dans Roblox Studio. Utilisez **F5** pour lancer la partie, puis **8** pour choisir une mission au poste Direction ou Commandement.
 
-```powershell
-# 1. Vérifier le code et les tests (obligatoire avant toute phase terminée)
-powershell -ExecutionPolicy Bypass -File tools\check.ps1
+## Vérifications locales
 
-# 2. Construire la place
-& "$env:APPDATA\npm\rojo.cmd" build -o build\ERS.rbxlx
+Le contrôle de syntaxe couvre 74 fichiers Luau. Les quatre suites totalisent **950 assertions réussies**.
 
-# 3. Ouvrir build\ERS.rbxlx dans Roblox Studio, puis F5 (Play)
-```
+| Suite | Assertions |
+| --- | ---: |
+| Unitaire | 124 |
+| Intégration | 267 |
+| Multijoueur | 85 |
+| Interface | 474 |
 
-Variante live :
-
-```powershell
-& "$env:APPDATA\npm\rojo.cmd" serve
-# puis, dans Studio : plugin Rojo → Connect → default.project.json
-```
-
-> Le build est produit par Rojo, jamais par « Save to file » de Studio : c'est
-> ce qui garantit que `build\ERS.rbxlx` correspond exactement aux sources.
-
-## Vérification attendue
-
-`tools\check.ps1` compile tous les fichiers Luau puis exécute quatre suites.
-
-```text
-Compilation : 62 fichier(s), 0 erreur(s)
-== tests/Unit/spec.luau ==            Unitaires    : 124 réussite(s), 0 échec(s)
-== tests/Integration/sim.luau ==      Intégration  : 167 réussite(s), 0 échec(s)
-== tests/Multiplayer/permissions.luau == Multijoueur : 67 réussite(s), 0 échec(s)
-== tests/UI/ui.luau ==                Interface    : 251 réussite(s), 0 échec(s)
-OK
-```
-
-Total : **609 assertions**, 0 échec. Le script sort en erreur (code non nul) au
-premier échec.
+Les tests déroulent les trois missions, les navettes vers l’hôpital et le passage de 19 h à 21 h. Ils mesurent le HUD en 1024 × 768, 1280 × 720, 1920 × 1080 et 2560 × 1440. Dans Roblox Studio, la mission de l’église a été menée jusqu’à l’admission d’une victime. Le crépuscule et le HUD corrigé ont été observés en partie. À 21 h, la sonde comptait 60 lampadaires et 334 vitres allumés. Le client a mesuré un signal en sortie de la radio et pendant la lecture de la sirène.
 
 ## Commandes en jeu
 
 | Touche | Effet |
 | --- | --- |
 | `1` … `7` | sélectionne le groupe tactique s'il existe, sinon ouvre le panneau (Interventions, Véhicules, Personnel, Matériel, Commandement, Budget, Postes) |
+| `8` | ouvre les missions, les objectifs et le bulletin de service |
 | `WASD` / flèches | déplace la caméra |
 | `+` / `-` | zoome / dézoome |
 | `Q` / `E` | pivote la caméra par quarts de tour |
@@ -107,7 +71,7 @@ EmergencyResponseSimulator/
 ├─ AGENTS.md                  contrat de développement
 ├─ default.project.json       mapping Rojo
 ├─ opencode.json              configuration de l'agent
-├─ build/ERS.rbxlx            place générée (Phase 2)
+├─ build/ERS.rbxlx            place locale générée par Rojo
 ├─ docs/                      cette documentation
 ├─ data/                      organisation cible des données exportées
 ├─ assets/                    organisation cible des assets originaux
@@ -118,11 +82,11 @@ EmergencyResponseSimulator/
 │  │  └─ Remotes/             (créé par le serveur au démarrage)
 │  ├─ ServerScriptService/
 │  │  ├─ Bootstrap.server.luau
-│  │  └─ Services/            15 services serveur
+│  │  └─ Services/            simulation, réseau, sauvegarde et scène
 │  └─ StarterPlayer/StarterPlayerScripts/
 │     ├─ Bootstrap.client.luau
 │     ├─ Controllers/         5 contrôleurs (interface, réseau, caméra, entrées, audio)
-│     └─ UI/                  thème, widgets, mini-carte, barre, scène, 7 panneaux, menu
+│     └─ UI/                  thème, widgets, mini-carte, barre, scène, 8 panneaux, menu
 ├─ tests/
 │  ├─ __env.luau, __prelude.luau, __stubs.luau
 │  └─ Unit/ Integration/ Multiplayer/ UI/
@@ -131,25 +95,6 @@ EmergencyResponseSimulator/
 
 Détail des fichiers et des dépendances : [Architecture.md](Architecture.md).
 
-## Limites connues de la Phase 2
+## Sauvegarde et audio
 
-1. **Git n'est pas installé.** `.gitignore` est prêt, mais aucun dépôt ni
-   historique n'existe encore. À faire avant la phase suivante.
-2. **Interface vérifiée dans Studio.** Des sessions F5 sur `build/ERS.rbxlx` ont
-   validé le menu, la barre d'état, les sept onglets, la mini-carte, les
-   couches, la barre inférieure, le tiroir en deux colonnes, le journal et les
-   notifications. Les défauts trouvés à ces occasions sont corrigés et listés
-   dans [Changelog.md](Changelog.md). La lisibilité fine (petites polices,
-   9–10 px) reste à confirmer sur d'autres résolutions.
-3. **DataStore hors ligne.** Dans Studio sans connexion, le `DataStoreService`
-   peut échouer : le serveur bascule sur un stockage mémoire, journalisé, sans
-   bloquer la partie.
-4. **Trajets routés, ville générée.** La ville reste une grille déterministe de
-   dix routes et seize îlots, avec caserne, cinq points d'intérêt et deux
-   espaces publics. Depuis la Phase 2, les engins suivent le **réseau routier**
-   (`Shared/Utilities/RoadNetwork`) : graphe de 25 carrefours et 40 tronçons
-   construit depuis `Shared/City`, plus court chemin Dijkstra déterministe et
-   polyligne de trajet. Les modèles 3D détaillés et la circulation restent en
-   Phase 3.
-5. **Pas de publication.** Aucune action `Publish to Roblox` a été effectuée
-   et ne doit l'être sans décision explicite.
+Le serveur relit les sauvegardes 0.3.0. Si le DataStore est inaccessible à l’ouverture, la garde utilise la mémoire locale. Les voix françaises utilisent la synthèse Roblox et la sirène utilise un enregistrement du Creator Store. [Sources audio](../assets/ATTRIBUTION.md)

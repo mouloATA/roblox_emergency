@@ -303,7 +303,7 @@ function MainMenu.create(parent: any, context: any): any
 		for roleId, button in pairs(roleButtons) do
 			local holder = nil
 			for _, player in ipairs(snapshot.players or {}) do
-				if player.role == roleId then
+				if player.connected ~= false and player.role == roleId then
 					holder = player
 				end
 			end

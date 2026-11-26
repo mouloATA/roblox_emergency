@@ -66,6 +66,13 @@ function BudgetPanel.create(parent: any, context: any): any
 		Size = UDim2.new(1, 0, 1, -78),
 	})
 
+	local turnLabel = Widgets.label(body, "TourAchat", "", {
+		Size = UDim2.new(1, 0, 0, 22), TextSize = Theme.text.small,
+	})
+	local passButton = Widgets.button(body, "Action_pass_purchase_turn", "Passer mon tour", function()
+		controller:command("pass_purchase_turn", nil)
+	end, { Size = UDim2.new(1, 0, 0, 30) })
+
 	Widgets.section(body, "Achat de véhicule")
 
 	local buyList = Widgets.scroller(body, "Catalogue", {
@@ -120,9 +127,13 @@ function BudgetPanel.create(parent: any, context: any): any
 			def.crewRequired
 		)
 		local snapshot = latestSnapshot
-		local affordable = (snapshot.budget or 0) >= def.cost
+		local turn = snapshot.purchase or {}
+		local cost = def.cost + (turn.surcharge or 0)
+		entry.cost.Text = Theme.money(cost)
+		local affordable = (snapshot.budget or 0) >= cost
+		local myTurn = turn.owner == nil or turn.owner == controller.player.UserId
 		local underCap = #(snapshot.vehicles or {}) < Config.MAX_FLEET
-		Widgets.setEnabled(entry.buy, controller:can("buy_vehicle") and affordable and underCap)
+		Widgets.setEnabled(entry.buy, controller:can("buy_vehicle") and affordable and underCap and myTurn)
 		entry.buy.Text = affordable and "Acheter" or "Fonds"
 	end)
 
@@ -174,6 +185,12 @@ function BudgetPanel.create(parent: any, context: any): any
 
 	local function update(snapshot: any, _state: any)
 		latestSnapshot = snapshot
+		local turn = snapshot.purchase or {}
+		local multiple = (turn.count or 0) > 1
+		turnLabel.Text = (multiple and string.format("Achats de %s · %d s", turn.name, turn.remaining) or "Achats de garde")
+			.. " · majoration " .. Theme.money(turn.surcharge or 0)
+		passButton.Visible = multiple
+		Widgets.setEnabled(passButton, multiple and turn.owner == controller.player.UserId)
 		buyRows.update(Vehicles.list)
 		balance.Text = Theme.money(snapshot.budget or 0)
 		balance.TextColor3 = (snapshot.budget or 0) >= 0 and Theme.colors.success or Theme.colors.danger

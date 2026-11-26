@@ -87,6 +87,8 @@ function SaveService.serialize(world: any): any
 			service = person.service,
 			qualifications = qualifications,
 			experience = person.experience,
+			level = person.level or 0,
+			hireCost = person.hireCost or 1200,
 			fatigue = person.fatigue,
 			health = person.health,
 		})
@@ -123,6 +125,7 @@ function SaveService.serialize(world: any): any
 		budget = world.budget,
 		stats = copyMap(world.stats),
 		equipmentStock = copyMap(world.equipmentStock),
+		fieldInventoryVersion = 1,
 		vehicles = vehicles,
 		personnel = personnel,
 		groups = groups,
@@ -141,7 +144,8 @@ function SaveService.deserialize(world: any, data: any): any
 	if type(data) ~= "table" then
 		return Result.err("Sauvegarde illisible.")
 	end
-	if data.version ~= world.version then
+	local previousFormat = world.version == "0.4.0" and data.version == "0.3.0"
+	if data.version ~= world.version and not previousFormat then
 		return Result.err(string.format("Version de sauvegarde incompatible (%s).", tostring(data.version)))
 	end
 
@@ -167,6 +171,8 @@ function SaveService.deserialize(world: any, data: any): any
 					grade = entry.grade or "Sapeur",
 					service = entry.service or "fire",
 					qualifications = qualifications,
+					level = validNumber(entry.level) and math.clamp(math.floor(entry.level), 0, 3) or 0,
+					hireCost = validNumber(entry.hireCost) and math.max(0, math.floor(entry.hireCost)) or 1200,
 					experience = validNumber(entry.experience) and entry.experience or 0,
 					fatigue = validNumber(entry.fatigue) and math.clamp(entry.fatigue, 0, world.config.MAX_FATIGUE) or 0,
 					health = validNumber(entry.health) and math.clamp(entry.health, 0, 100) or 100,
@@ -300,7 +306,9 @@ function SaveService.deserialize(world: any, data: any): any
 	world.groups = groupMap
 	world.sectors = sectorMap
 	world.incidents = {}
+	world.mission = nil
 	world.transactions = {}
+	world.purchaseTurn = nil
 	world.equipmentStock = {}
 
 	for equipmentId, quantity in pairs(data.equipmentStock or {}) do
@@ -309,7 +317,19 @@ function SaveService.deserialize(world: any, data: any): any
 		end
 	end
 
+	-- Les anciennes parties ne disposaient d'aucun outil de découpe dans leur stock initial.
+	if data.fieldInventoryVersion == nil then
+		for _, id in ipairs({ "CISAILLE", "ECARTEUR" }) do
+			local owned = world.equipmentStock[id] or 0
+			for _, vehicle in pairs(vehicleMap) do owned += vehicle.equipment[id] or 0 end
+			if owned == 0 then world.equipmentStock[id] = world.config.START_EQUIPMENT[id] end
+		end
+	end
+
 	world.budget = validNumber(data.budget) and math.floor(data.budget) or 0
+	for key in pairs(world.stats) do
+		world.stats[key] = 0
+	end
 	for key, value in pairs(data.stats or {}) do
 		if validNumber(value) then
 			world.stats[key] = value
@@ -353,11 +373,11 @@ function SaveService.save(world: any, store: any): any
 	local payload = SaveService.serialize(world)
 	local lastError = "erreur inconnue"
 	for _ = 1, world.config.SAVE_RETRIES do
-		local ok, err = pcall(store.set, world.config.SAVE_KEY, payload)
-		if ok then
+		local ok, written, detail = pcall(store.set, world.config.SAVE_KEY, payload)
+		if ok and written ~= false then
 			return Result.ok("Sauvegarde effectuée.")
 		end
-		lastError = tostring(err)
+		lastError = tostring(if ok then detail else written)
 	end
 	return Result.err("Sauvegarde impossible : " .. lastError)
 end
@@ -371,7 +391,7 @@ function SaveService.load(world: any, store: any): any
 		return Result.err("Lecture impossible : " .. tostring(data))
 	end
 	if data == nil then
-		return Result.err("Aucune sauvegarde existante.")
+		return Result.err("Aucune sauvegarde existante.", { empty = true })
 	end
 	return SaveService.deserialize(world, data)
 end
@@ -397,11 +417,7 @@ end
 function SaveService.dataStoreAdapter(dataStore: any): any
 	return {
 		get = function(key: string): any
-			local ok, value = pcall(dataStore.GetAsync, dataStore, key)
-			if ok then
-				return value
-			end
-			return nil
+			return dataStore:GetAsync(key)
 		end,
 		set = function(key: string, value: any): (boolean, string?)
 			local ok, err = pcall(dataStore.SetAsync, dataStore, key, value)

@@ -14,6 +14,8 @@ local UI = game:GetService("Players").LocalPlayer:WaitForChild("PlayerScripts"):
 local Theme = require(UI:WaitForChild("Theme"))
 local Widgets = require(UI:WaitForChild("Widgets"))
 
+local Recruitment = require(Shared:WaitForChild("Catalogs"):WaitForChild("Recruitment"))
+
 local PersonnelPanel = {}
 
 function PersonnelPanel.create(parent: any, context: any): any
@@ -95,6 +97,22 @@ function PersonnelPanel.create(parent: any, context: any): any
 		end
 	end, { Size = UDim2.fromOffset(90, 30), TextSize = Theme.text.tiny })
 
+	local trainButton = Widgets.button(detail, "Action_train_personnel", "Former", function()
+		local person = controller:selectedPerson()
+		if person then controller:command("train_personnel", { personId = person.id }) end
+	end, { Size = UDim2.new(1, 0, 0, 30), TextSize = Theme.text.small })
+	local transferButton = Widgets.button(detail, "Action_transfer_personnel", "Transférer", function()
+		local person = controller:selectedPerson()
+		if person then controller:command("transfer_personnel", { personId = person.id }) end
+	end, { Size = UDim2.new(1, 0, 0, 30), TextSize = Theme.text.small })
+	Widgets.section(detail, "Recrutement")
+	local recruitButtons = {}
+	for _, profile in ipairs(Recruitment.profiles) do
+		recruitButtons[profile.id] = Widgets.button(detail, "Action_recruit_" .. profile.id, profile.grade, function()
+			controller:command("recruit_personnel", { profileId = profile.id })
+		end, { Size = UDim2.new(1, 0, 0, 30), TextSize = Theme.text.small })
+	end
+
 	local rows = Widgets.list(list, function(person)
 		return person.id
 	end, function(person)
@@ -159,6 +177,17 @@ function PersonnelPanel.create(parent: any, context: any): any
 			end
 		end
 
+		local turn = snapshot.purchase or {}
+		local canBuy = controller:can("buy_vehicle") and (turn.owner == nil or turn.owner == controller.player.UserId)
+		if (turn.count or 0) > 1 then subtitle.Text ..= " · Achats de " .. turn.name end
+		for _, profile in ipairs(Recruitment.profiles) do
+			local price = profile.cost + (turn.surcharge or 0)
+			local button = recruitButtons[profile.id]
+			button.Text = profile.grade .. " · " .. Theme.money(price)
+			Widgets.setEnabled(button, canBuy and (snapshot.budget or 0) >= price and #personnel < Recruitment.maxPersonnel)
+		end
+		trainButton.Visible = selected ~= nil
+		transferButton.Visible = selected ~= nil
 		local vehicle = controller:selectedVehicle()
 		if not selected then
 			detailTitle.Text = "Sélectionnez un membre"
@@ -171,7 +200,15 @@ function PersonnelPanel.create(parent: any, context: any): any
 			return
 		end
 
-		detailTitle.Text = selected.name
+		local level = selected.level or 0
+		local fee = Recruitment.trainingCost(level)
+		local free = canBuy and selected.vehicleId == nil
+		Widgets.setEnabled(trainButton, free and level < Recruitment.maxLevel and (snapshot.budget or 0) >= fee)
+		Widgets.setEnabled(transferButton, free)
+		trainButton.Text = level == Recruitment.maxLevel and "Formation maximale"
+			or string.format("Former au niveau %d · %s", level + 1, Theme.money(fee))
+		transferButton.Text = "Transférer · +" .. Theme.money(selected.transferValue or 600)
+		detailTitle.Text = string.format("%s · niv. %d", selected.name, level)
 		detailLine.Text = string.format(
 			"%s · %s · santé %s",
 			selected.grade,

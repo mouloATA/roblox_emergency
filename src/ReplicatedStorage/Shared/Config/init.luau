@@ -10,7 +10,7 @@
 
 local Config = {}
 
-Config.VERSION = "0.3.0"
+Config.VERSION = "0.4.0"
 Config.GAME_NAME = "Emergency Response Simulator"
 Config.GAME_SHORT = "ERS"
 Config.CITY_NAME = "Val-des-Secours"
@@ -36,6 +36,12 @@ Config.SAVE_RETRY_DELAY = 2
 -- Économie
 -- ─────────────────────────────────────────────────────────────
 Config.START_BUDGET = 25000
+-- Points du bilan par niveau de gravité, puis par victime admise ou perdue.
+Config.SCORE_FULL = 150
+Config.SCORE_PARTIAL = 75
+Config.SCORE_FAILURE = 60
+Config.SCORE_ADMISSION = 40
+Config.SCORE_CIVILIAN_LOSS = 100
 Config.MAX_FLEET = 40
 Config.REPAIR_COST_PER_POINT = 12 -- € par point d'état manquant
 Config.REPAIR_SECONDS_PER_POINT = 1.5 -- secondes d'atelier par point manquant
@@ -45,7 +51,7 @@ Config.MOBILIZATION_REFUND = 0 -- une mobilisation n'est jamais remboursée
 -- Parc, personnel et stock de départ (prototype)
 -- ─────────────────────────────────────────────────────────────
 Config.START_VEHICLES = { "FPT", "VSAV", "VPC" }
-Config.START_PERSONNEL = 12
+Config.START_PERSONNEL = 13
 Config.START_EQUIPMENT = {
 	ARI = 6,
 	EXTINCTEUR = 6,
@@ -57,6 +63,8 @@ Config.START_EQUIPMENT = {
 	PC_MOBILE = 1,
 	BALISE = 4,
 	CORDE = 2,
+	CISAILLE = 2,
+	ECARTEUR = 1,
 }
 
 -- ─────────────────────────────────────────────────────────────
@@ -177,10 +185,9 @@ Config.SKY_MOON_SIZE = 80
 Config.AUDIO_AMBIENCE = "rbxasset://sounds/action_falling.ogg"
 Config.AUDIO_AMBIENCE_VOLUME = 0.10
 Config.AUDIO_AMBIENCE_SPEED = 0.55
-Config.AUDIO_SIREN = "rbxasset://sounds/action_falling.ogg"
+Config.AUDIO_SIREN = "rbxassetid://389665768" -- French Police Siren, Creator Store (assets/ATTRIBUTION.md)
 Config.AUDIO_SIREN_VOLUME = 0.22
-Config.AUDIO_SIREN_SPEEDS = { 0.78, 1.12 }
-Config.AUDIO_SIREN_PERIOD = 0.9
+Config.RADIO_VOICE = "402" -- voix française du moteur Roblox
 Config.AUDIO_CLICK = "rbxasset://sounds/action_jump.mp3"
 Config.AUDIO_ALERT = "rbxasset://sounds/volume_slider.ogg"
 Config.AUDIO_ERROR = "rbxasset://sounds/action_jump_land.mp3"

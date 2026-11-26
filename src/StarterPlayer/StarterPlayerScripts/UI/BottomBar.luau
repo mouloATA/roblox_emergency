@@ -62,10 +62,14 @@ function BottomBar.create(parent: any, context: any): any
 	})
 	Widgets.stroke(root, Theme.colors.steel, 2)
 
-	local content = Widgets.frame(root, "Contenu", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(8, 6),
-		Size = UDim2.new(1, -16, 1, -12),
+	local viewport = Instance.new("ScrollingFrame")
+	viewport.Name, viewport.BackgroundTransparency, viewport.BorderSizePixel = "ZoneCommandes", 1, 0
+	viewport.Position, viewport.Size = UDim2.fromOffset(8, 6), UDim2.new(1, -16, 1, -12)
+	viewport.ScrollingDirection = Enum.ScrollingDirection.X
+	viewport.CanvasSize, viewport.ScrollBarThickness = UDim2.fromOffset(0, 0), 4
+	viewport.Parent = root
+	local content = Widgets.frame(viewport, "Contenu", {
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
 	})
 
 	-- ── 1. Catégories de moyens ───────────────────────────────
@@ -95,7 +99,7 @@ function BottomBar.create(parent: any, context: any): any
 		local stroke = Widgets.stroke(button, Theme.colors.steel, 1)
 
 		local caption = Widgets.label(button, "Libelle", category.label, {
-			Position = UDim2.fromOffset(4, 26),
+			Position = UDim2.fromOffset(4, 29),
 			Size = UDim2.new(1, -8, 0, 14),
 			TextSize = 9,
 			TextXAlignment = Enum.TextXAlignment.Center,
@@ -187,9 +191,10 @@ function BottomBar.create(parent: any, context: any): any
 		TextColor3 = Theme.colors.warning,
 	})
 	local alerts = Widgets.label(groupsPanel, "Alertes", "", {
-		Position = UDim2.fromOffset(4, 142),
-		Size = UDim2.new(1, -8, 0, 16),
+		Position = UDim2.fromOffset(4, 138),
+		Size = UDim2.new(1, -8, 0, 26),
 		TextSize = 9,
+		TextWrapped = true,
 		TextColor3 = Theme.colors.textDim,
 	})
 
@@ -212,11 +217,13 @@ function BottomBar.create(parent: any, context: any): any
 	})
 
 	local commands = {}
+	local commandOrder = {}
 
 	local function placeCommand(name: string, text: string, column: number, row: number, onClick: () -> ()): any
 		local button = commandButton(commandPanel, name, text, onClick)
 		button.Position = UDim2.new(column * 0.25, 2, 0, 36 + row * 36)
 		button.Size = UDim2.new(0.25, -4, 0, 32)
+		table.insert(commandOrder, button)
 		commands[name] = button
 		return button
 	end
@@ -374,8 +381,66 @@ function BottomBar.create(parent: any, context: any): any
 		Position = UDim2.fromOffset(2, 149),
 		Size = UDim2.new(1, -4, 0, 14),
 		TextSize = 8,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextColor3 = Theme.colors.textMuted,
 	})
+
+	-- Répartit la largeur réellement disponible entre les quatre pupitres.
+	local lastWidth = 0
+	local function resize(screenWidth: number): ()
+		if screenWidth == lastWidth then return end
+		lastWidth = screenWidth
+		local width = math.max(900, screenWidth - 16)
+		viewport.CanvasSize = UDim2.fromOffset(width, 0)
+		content.Size = UDim2.new(0, width, 1, 0)
+		local meansWidth = math.min(330, math.floor(width * 0.22))
+		local groupWidth = math.min(226, math.floor(width * 0.18))
+		local crewWidth = math.min(340, math.floor(width * 0.22))
+		local commandX = meansWidth + groupWidth + 12
+		local commandWidth = width - commandX - crewWidth - 6
+		means.Size = UDim2.new(0, meansWidth, 1, 0)
+		groupsPanel.Position = UDim2.fromOffset(meansWidth + 6, 0)
+		groupsPanel.Size = UDim2.new(0, groupWidth, 1, 0)
+		commandPanel.Position = UDim2.fromOffset(commandX, 0)
+		commandPanel.Size = UDim2.new(0, commandWidth, 1, 0)
+		crewPanel.Size = UDim2.new(0, crewWidth, 1, 0)
+		crewPanel.Position = UDim2.new(1, -crewWidth, 0, 0)
+
+		local cols = meansWidth < 310 and 2 or 3
+		local cell = (meansWidth - 16 - 4 * (cols - 1)) / cols
+		local height = cols == 2 and 42 or 55
+		for i, cat in ipairs(CATEGORIES) do
+			local v = categories[cat.id]
+			v.instance.Size = UDim2.fromOffset(cell, height)
+			v.instance.Position = UDim2.fromOffset(((i - 1) % cols) * (cell + 4), 21 + math.floor((i - 1) / cols) * (height + 4))
+			v.instance.TextYAlignment = Enum.TextYAlignment.Top
+			v.count.Position = UDim2.fromOffset(2, 2)
+			v.count.TextXAlignment = Enum.TextXAlignment.Right
+			v.label.Position = UDim2.fromOffset(2, height - 20)
+			v.label.Size = UDim2.new(1, -4, 0, 16)
+			v.label.Text = cat.id == "command" and cell < 108 and "Cmdt." or cat.label
+		end
+		local groupInner = groupWidth - 16
+		local slotWidth = (groupInner - 15) / 6
+		for i, button in ipairs(groups) do
+			button.Position, button.Size = UDim2.fromOffset((i - 1) * (slotWidth + 3), 22), UDim2.fromOffset(slotWidth, 24)
+		end
+		pauseButton.Position, pauseButton.Size = UDim2.fromOffset(0, 52), UDim2.fromOffset(77, 24)
+		local speedWidth = (groupInner - 77 - 9) / 3
+		for i, speed in ipairs(speedValues) do
+			speeds[speed].Position = UDim2.fromOffset(80 + (i - 1) * (speedWidth + 3), 52)
+			speeds[speed].Size = UDim2.fromOffset(speedWidth, 24)
+		end
+		local commandCols = commandWidth < 408 and 3 or 4
+		for i, button in ipairs(commandOrder) do
+			button.Position = UDim2.new(((i - 1) % commandCols) / commandCols, 2, 0, 36 + 34 * math.floor((i - 1) / commandCols))
+			button.Size = UDim2.new(1 / commandCols, -4, 0, 30)
+			button.TextWrapped = true
+		end
+		commandHint.Position = UDim2.fromOffset(2, commandCols == 3 and 139 or 108)
+		commandHint.Size = UDim2.new(1, -4, 0, commandCols == 3 and 24 or 48)
+		commandHint.TextWrapped = true
+	end
 
 	local function setCamera(value: any): ()
 		camera = value
@@ -430,7 +495,7 @@ function BottomBar.create(parent: any, context: any): any
 		clock.Text = snapshot.clock or "--:--"
 		budget.Text = Theme.money(snapshot.budget or 0)
 		alerts.Text = string.format(
-			"%d véhicule(s) · %d urgence(s) · %d secteur(s)",
+			"%d engins · %d urgences · %d secteurs",
 			#vehicles,
 			#incidents,
 			#(snapshot.sectors or {})
@@ -583,6 +648,7 @@ function BottomBar.create(parent: any, context: any): any
 
 	return {
 		root = root,
+		resize = resize,
 		update = update,
 		setCamera = setCamera,
 		categories = categories,

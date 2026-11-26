@@ -13,16 +13,9 @@ tiers, d'un site de modèles ou d'une capture d'écran. Les ressemblances
 fonctionnelles (véhicules français, rôles, interventions) sont permises ; la
 copie d'un modèle, d'une texture ou d'une interface ne l'est pas.
 
-## État actuel (Phase 0)
+## Ressources du jeu
 
-Le dossier ne contient que ce README. **Aucun asset externe n'est utilisé.**
-
-- La scène 3D est générée en code par `SceneService` (sol, routes, caserne,
-  points d'intérêt, bâtiments déterministes).
-- L'interface est entièrement construite par `UI/Theme`, `UI/Widgets` et les
-  panneaux : rectangles, textes, cadres, sans image.
-- Les véhicules et personnages ne sont pas encore modélisés : la Phase 0 est
-  une simulation tactique, pas une scène peuplée.
+La ville, les façades, les engins et les usagers de la rue sont construits avec des primitives Roblox. Les formes de la caserne, de l’hôpital, de l’église et les équipements spécialisés des véhicules sont définis en Luau. La sirène française et la synthèse vocale du centre sont documentées dans [l’attribution audio](ATTRIBUTION.md).
 
 ## Organisation cible (non encore créée)
 

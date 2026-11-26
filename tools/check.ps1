@@ -63,8 +63,8 @@ if (-not (Test-Path $compiler)) {
 	exit 1
 }
 
-$work = Join-Path $env:LOCALAPPDATA "Temp\opencode\ers-check"
-if (Test-Path $work) { Remove-Item $work -Recurse -Force }
+$tempRoot = (Get-Item -LiteralPath $env:TEMP).FullName
+$work = Join-Path $tempRoot ("ers-check-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $work | Out-Null
 
 Copy-Item (Join-Path $root "src") $work -Recurse
@@ -165,7 +165,11 @@ foreach ($suite in $suites) {
 }
 
 Write-Host ""
-Remove-Item $work -Recurse -Force
+$resolvedWork = (Resolve-Path -LiteralPath $work).Path
+if ((Split-Path -Parent $resolvedWork) -ne $tempRoot -or (Split-Path -Leaf $resolvedWork) -notmatch '^ers-check-[0-9a-f]{32}$') {
+	throw "Dossier temporaire de test inattendu."
+}
+Remove-Item -LiteralPath $resolvedWork -Recurse -Force
 
 if ($failed) {
 	Write-Host "ECHEC" -ForegroundColor Red

@@ -32,6 +32,7 @@ local EquipmentPanel = require(UI:WaitForChild("EquipmentPanel"))
 local CommandPanel = require(UI:WaitForChild("CommandPanel"))
 local BudgetPanel = require(UI:WaitForChild("BudgetPanel"))
 local MultiplayerPanel = require(UI:WaitForChild("MultiplayerPanel"))
+local MissionPanel = require(UI:WaitForChild("MissionPanel"))
 local MainMenu = require(UI:WaitForChild("MainMenu"))
 
 local App = {}
@@ -44,6 +45,7 @@ App.tabs = {
 	{ id = "command", label = "Commandement", key = "5" },
 	{ id = "budget", label = "Budget", key = "6" },
 	{ id = "roles", label = "Postes", key = "7" },
+	{ id = "missions", label = "Missions", key = "8" },
 }
 
 local function logColor(kind: string): any
@@ -78,7 +80,7 @@ function App.create(parent: any, context: any): any
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "ERS"
 	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
+	gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
 	gui.DisplayOrder = 10
 	-- Mode Sibling obligatoire : en mode Global, un enfant resté au ZIndex 1
 	-- passe sous le fond de son conteneur (barre, tiroir, mini-carte). Ici les
@@ -92,6 +94,8 @@ function App.create(parent: any, context: any): any
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 	})
+	local hudScale = Instance.new("UIScale")
+	hudScale.Name, hudScale.Scale, hudScale.Parent = "EchelleHUD", 1, root
 
 	-- ── Barre supérieure ──────────────────────────────────────
 	local topBar = Widgets.frame(root, "BarreSuperieure", {
@@ -111,21 +115,22 @@ function App.create(parent: any, context: any): any
 	})
 	local brandName = Widgets.label(topBar, "Nom", Config.GAME_NAME, {
 		Position = UDim2.fromOffset(58, 6),
-		Size = UDim2.fromOffset(300, 18),
+		Size = UDim2.fromOffset(213, 18),
 		TextSize = Theme.text.small,
 		Font = Theme.fonts.bold,
 	})
 	local city = Widgets.label(topBar, "Ville", string.format("%s · centre 112", Config.CITY_NAME), {
 		Position = UDim2.fromOffset(58, 25),
-		Size = UDim2.fromOffset(300, 14),
+		Size = UDim2.fromOffset(213, 15),
 		TextSize = 9,
 		TextColor3 = Theme.colors.textMuted,
 	})
 
 	local status = Widgets.label(topBar, "Statut", "Synchronisation…", {
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Size = UDim2.fromOffset(700, 22),
+		Position = UDim2.new(0, 278, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.new(1, -478, 0, 22),
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextSize = Theme.text.small,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Font = Theme.fonts.mono,
@@ -174,7 +179,7 @@ function App.create(parent: any, context: any): any
 	Widgets.stroke(tabColumn, Theme.colors.steel, 1)
 	Widgets.padding(tabColumn, 6, 2)
 
-	local tabBody = Widgets.vertical(tabColumn, "Liste", {
+	local tabBody = Widgets.scroller(tabColumn, "Liste", {
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 	})
@@ -197,8 +202,8 @@ function App.create(parent: any, context: any): any
 		tabButtons[tab.id] = button
 	end
 
-	Widgets.label(tabBody, "Aide", "WASD/carte : déplacer\n+/- : zoom · Q/E : pivoter\n1–6 : groupes · Espace : pause\nM : menu · R : recentrer", {
-		Size = UDim2.new(1, 0, 0, 76),
+	Widgets.label(tabBody, "Aide", "WASD · déplacement\n+/− · zoom\nQ/E · rotation\nEspace · pause\nR · recentrer", {
+		Size = UDim2.new(1, -4, 0, 84),
 		TextSize = 8,
 		TextYAlignment = Enum.TextYAlignment.Bottom,
 		TextColor3 = Theme.colors.textMuted,
@@ -234,13 +239,16 @@ function App.create(parent: any, context: any): any
 		Font = Theme.fonts.bold,
 		TextColor3 = Theme.colors.textDim,
 	})
-	local logHint = Widgets.label(logPanel, "Aide", "Le plus récent en tête", {
-		Size = UDim2.new(0, 200, 0, 14),
-		TextSize = 8,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = Theme.colors.textMuted,
+	local radioPanel = Widgets.frame(root, "Radio", {
+		Position = UDim2.fromOffset(Theme.sizes.tabsCompact + 16, Theme.sizes.topBar + 8),
+		Size = UDim2.fromOffset(480, 44), BackgroundColor3 = Theme.colors.panelDark,
+		ZIndex = 19, Visible = false,
 	})
-	logHint.Position = UDim2.new(1, -204, 0, 0)
+	Widgets.stroke(radioPanel, Theme.colors.steel, 1)
+	local radioText = Widgets.label(radioPanel, "Transmission", "", {
+		Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0),
+		TextSize = Theme.text.small, TextWrapped = true, TextColor3 = Theme.colors.text,
+	})
 
 	local logList = Widgets.scroller(logPanel, "Lignes", {
 		Position = UDim2.fromOffset(0, 16),
@@ -331,6 +339,7 @@ function App.create(parent: any, context: any): any
 		command = CommandPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
 		budget = BudgetPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
 		roles = MultiplayerPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
+		missions = MissionPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
 	}
 
 	-- ── Notifications ─────────────────────────────────────────
@@ -396,6 +405,7 @@ function App.create(parent: any, context: any): any
 		drawer = drawer,
 		drawerTitle = drawerTitle,
 		logPanel = logPanel,
+		radioPanel = radioPanel,
 		logRows = logRows,
 		toastRows = toastRows,
 		menu = menu,
@@ -463,9 +473,19 @@ function App.create(parent: any, context: any): any
 		local view = nil
 		local camera = self.camera
 		local absolute = gui.AbsoluteSize
-		if absolute and absolute.X and absolute.Y then
-			-- La mini-carte se réduit pour ne jamais passer sous la barre.
-			self.map.resize(absolute.X, absolute.Y)
+		if absolute and absolute.X > 0 and absolute.Y > 0 then
+			-- Sur écran dense les panneaux gagnent en taille physique tout en
+			-- gardant le même espace logique que sur un bureau standard.
+			local factor = math.clamp(math.min(absolute.X / 1600, absolute.Y / 900), 1, 1.5)
+			hudScale.Scale = factor
+			root.Size = UDim2.fromScale(1 / factor, 1 / factor)
+			local width, height = absolute.X / factor, absolute.Y / factor
+			self.map.resize(width, height)
+			bottom.resize(width)
+			local centerWidth = math.clamp(width - Theme.sizes.tabsCompact - self.map.root.Size.X.Offset - 32, 1, 720)
+			logPanel.Size = UDim2.fromOffset(centerWidth, 142)
+			radioPanel.Size = UDim2.fromOffset(centerWidth, 44)
+			toastsRoot.Size = UDim2.fromOffset(math.min(380, centerWidth), 190)
 		end
 		if camera then
 			if absolute and absolute.X and absolute.Y and absolute.X > 0 and absolute.Y > 0 then
@@ -506,6 +526,9 @@ function App.create(parent: any, context: any): any
 
 		if self.audio then
 			self.audio:update(snapshot)
+			radioPanel.Visible = type(self.audio.radioCaption) == "string" and self.audio.radioCaption ~= ""
+			radioText.Text = radioPanel.Visible and ("Radio · " .. self.audio.radioCaption) or ""
+			toastsRoot.Position = UDim2.fromOffset(Theme.sizes.tabsCompact + 16, Theme.sizes.topBar + (radioPanel.Visible and 58 or 8))
 			local latest = nil
 			for _, toast in ipairs(controller.toasts or {}) do
 				if (toast.id or 0) > (self.lastToastId or 0) then

@@ -149,6 +149,17 @@ local controller = InterfaceController.new({ player = player, catalogs = catalog
 -- Même montage que `Bootstrap.client` : caméra et scène 3D avant l'interface.
 local camera = CameraController.new({ camera = stubs.camera })
 camera:mount()
+do
+	stubs.camera.CameraType = Enum.CameraType.Custom
+	camera:syncCamera(stubs.camera)
+	check("vue tactique restaurée après apparition du personnage", stubs.camera.CameraType == Enum.CameraType.Scriptable
+		and stubs.camera.FieldOfView == Config.CAMERA_FOV)
+	local replacement = Instance.new("Camera")
+	camera:syncCamera(replacement)
+	check("remplacement de la caméra Roblox pris en charge", replacement.CameraType == Enum.CameraType.Scriptable
+		and replacement.FieldOfView == Config.CAMERA_FOV)
+	camera:syncCamera(stubs.camera)
+end
 local SceneView = require(ERSClient:WaitForChild("UI"):WaitForChild("SceneView"))
 local scene = SceneView.new({ workspace = game:GetService("Workspace") })
 
@@ -176,20 +187,21 @@ network:requestSnapshot()
 suite("Coque et premier snapshot")
 -- ─────────────────────────────────────────────────────────────
 check("ScreenGui créé", app.gui.Name == "ERS" and app.gui.Parent == playerGui)
+check("en-tête sous les commandes natives de Roblox", app.gui.ScreenInsets == Enum.ScreenInsets.CoreUISafeInsets)
 check("racine plein écran", app.gui:FindFirstChild("Racine") ~= nil)
-check("sept onglets", (function()
+check("huit onglets", (function()
 	local count = 0
 	for _ in pairs(app.tabs) do
 		count += 1
 	end
-	return count == 7
+	return count == 8
 end)())
-check("sept panneaux", (function()
+check("huit panneaux", (function()
 	local count = 0
 	for _ in pairs(app.panels) do
 		count += 1
 	end
-	return count == 7
+	return count == 8
 end)())
 check("premier joueur = direction", world.players[player.UserId].role == Constants.ROLE.DIRECTION)
 check("rôle lu depuis le snapshot", controller:role() == Constants.ROLE.DIRECTION)
@@ -662,7 +674,7 @@ local planA = City.build(Config.CITY_SEED)
 local planB = City.build(Config.CITY_SEED)
 check("dix routes (5 avenues, 5 rues)", #planA.roads == 10)
 check("seize îlots", #planA.blocks == 16)
-check("cinq points d'intérêt", #planA.pois == 5)
+check("six points d'intérêt dont l'église", #planA.pois == 6)
 check("cinq quartiers", #planA.districts == 5)
 check("deux espaces publics", #planA.parks == 2)
 check("huit places de stationnement", #planA.bays == 8)
@@ -708,14 +720,83 @@ check("cadre de visée affiché", app.map.viewFrame.Visible == true)
 check("mini-carte à l'échelle sur grand écran", (function()
 	app.gui.AbsoluteSize = Vector2.new(1356, 888)
 	app:render(controller.state, controller.snapshot)
-	return near(app.map.scale.Scale, 1)
+	return app.map.root.Size.X.Offset == Theme.sizes.minimapWidth
 end)())
 check("mini-carte réduite sur fenêtre courte", (function()
 	app.gui.AbsoluteSize = Vector2.new(900, 560)
 	app:render(controller.state, controller.snapshot)
-	local expected = (560 - Theme.sizes.topBar - Theme.sizes.bar - 24) / Theme.sizes.minimapHeight
-	return near(app.map.scale.Scale, math.max(0.55, expected))
+	return app.map.root.Size.Y.Offset <= 560 - Theme.sizes.topBar - Theme.sizes.bar - 24
+		and app.map.root.Size.X.Offset < Theme.sizes.minimapWidth
+		and app.map.layerButtons.personnel.TextSize >= 12
 end)())
+do
+	-- Résout les UDim2, l'ancrage, le padding et l'UIScale de l'arbre monté.
+	-- Les doublures ne calculent pas AbsoluteSize pour les descendants.
+	local function bounds(node, width, height)
+		if node == app.gui then return {x=0, y=0, w=width, h=height, zoom=1} end
+		local p = bounds(node.Parent, width, height)
+		local x, y, w, h = p.x, p.y, p.w, p.h
+		local pad = node.Parent:FindFirstChildOfClass("UIPadding")
+		if pad then
+			x += p.zoom * pad.PaddingLeft.Offset
+			y += p.zoom * pad.PaddingTop.Offset
+			w -= p.zoom * (pad.PaddingLeft.Offset + pad.PaddingRight.Offset)
+			h -= p.zoom * (pad.PaddingTop.Offset + pad.PaddingBottom.Offset)
+		end
+		local size, pos = node.Size, node.Position
+		local scale = node:FindFirstChildOfClass("UIScale")
+		local own = scale and scale.Scale or 1
+		local nw = (size.X.Scale * w + size.X.Offset * p.zoom) * own
+		local nh = (size.Y.Scale * h + size.Y.Offset * p.zoom) * own
+		return {x=x + pos.X.Scale*w + pos.X.Offset*p.zoom - nw*node.AnchorPoint.X,
+			y=y + pos.Y.Scale*h + pos.Y.Offset*p.zoom - nh*node.AnchorPoint.Y,
+			w=nw, h=nh, zoom=p.zoom*own}
+	end
+	for _, resolution in ipairs({{1024,768},{1280,720},{1920,1080},{2560,1440}}) do
+		local w, h = resolution[1], resolution[2]
+		local suffix = string.format(" %d × %d", w, h)
+		app.gui.AbsoluteSize = Vector2.new(w,h)
+		app:render(controller.state, controller.snapshot)
+		local function rect(node) return bounds(node,w,h) end
+		local function inside(a,b)
+			return a.x+0.01 >= b.x and a.y+0.01 >= b.y and a.x+a.w <= b.x+b.w+0.01 and a.y+a.h <= b.y+b.h+0.01
+		end
+		local mapBox, journal, radio = rect(app.map.root), rect(app.logPanel), rect(app.radioPanel)
+		local tab = rect(Widgets.find(app.root,"Onglets"))
+		local bottom = rect(app.bottom.root)
+		local screen = rect(app.root)
+		check("HUD plein écran" .. suffix, near(screen.w,w) and near(screen.h,h))
+		check("carte au-dessus des commandes" .. suffix, inside(mapBox,screen) and mapBox.y+mapBox.h < bottom.y)
+		check("onglets et radio dégagés" .. suffix, tab.x+tab.w < radio.x and radio.x+radio.w < mapBox.x)
+		check("journal et carte distincts" .. suffix, journal.x+journal.w < mapBox.x and tab.x+tab.w < journal.x)
+		check("journal au-dessus des commandes" .. suffix, journal.y+journal.h < bottom.y)
+		local previousRight = -1
+		for _, name in ipairs({"Moyens","GroupesTemps","CommandesContextuelles","Personnel"}) do
+			local panel = Widgets.find(app.bottom.root,name)
+			local box = rect(panel)
+			check("pupitre " .. name .. suffix, inside(box,bottom) and box.x>previousRight and box.w>140)
+			previousRight = box.x+box.w
+			for _, button in ipairs(panel:GetChildren()) do
+				if button.ClassName == "TextButton" then
+					local boxButton = rect(button)
+					check("commande " .. button.Name .. suffix, inside(boxButton,box) and boxButton.w >= 22)
+				end
+			end
+		end
+		local statusBox = rect(app.status)
+		check("statut dégagé du titre et du menu" .. suffix, rect(Widgets.find(app.topBar,"Nom")).x
+			+ rect(Widgets.find(app.topBar,"Nom")).w < statusBox.x and statusBox.x+statusBox.w < rect(app.audioButton).x)
+		local minFont = math.huge
+		for _, node in ipairs(app.root:GetDescendants()) do
+			if (node.ClassName == "TextLabel" or node.ClassName == "TextButton") and node.Text ~= "" then
+				minFont = math.min(minFont,node.TextSize*rect(node).zoom)
+			end
+		end
+		check("polices effectives >= 12 px" .. suffix, minFont >= 12, minFont)
+		check("transmission radio sur deux lignes" .. suffix, rect(app.radioPanel).h >= 2*13*screen.zoom
+			and Widgets.find(app.radioPanel,"Transmission").TextWrapped)
+	end
+end
 app.gui.AbsoluteSize = Vector2.new(1356, 888)
 app:render(controller.state, controller.snapshot)
 
@@ -740,6 +821,64 @@ check("anneau vert sur l'engin sélectionné", vsavView ~= nil and vsavView.ring
 check("urgence 3D créée", app.scene.incidents.entries[incident.id] ~= nil)
 local beacon = app.scene.incidents.entries[incident.id].beacon
 check("balise au-dessus du sol", beacon ~= nil and beacon.Position.Y > 0)
+
+do
+	local workspace = game:GetService("Workspace")
+	local cityScene = require(Services:WaitForChild("SceneService")).build(Config, workspace)
+	local buildings = cityScene:FindFirstChild("Batiments")
+	check("église et hôpital reconnaissables en 3D", buildings:FindFirstChild("Clocher") ~= nil
+		and buildings:FindFirstChild("ToitNef") ~= nil and buildings:FindFirstChild("AuventUrgences") ~= nil)
+	check("immeubles et caserne détaillés", buildings:FindFirstChild("Balcon") ~= nil
+		and cityScene:FindFirstChild("Caserne"):FindFirstChild("TourDeSechage") ~= nil)
+	check("portes arrière du VSAV", vsavView.folder:FindFirstChild("PortesSanitaires") ~= nil)
+	local models = require(ERSClient:WaitForChild("UI"):WaitForChild("StreetModels"))
+	local marker = { EPA = "Echelon", BEA = "Nacelle", CCGC = "Citerne", MOTO = "Guidon", VPC = "MatRadio" }
+	for _, definition in ipairs(Vehicles.list) do
+		local built = models.vehicle(workspace, "Essai", definition.id, definition.service)
+		check("carrosserie " .. definition.id, built.body and built.light and built.model:FindFirstChild("Pneu")
+			and (not marker[definition.id] or built.model:FindFirstChild(marker[definition.id]) ~= nil))
+		built.model:Destroy()
+	end
+	local traffic = require(ERSClient:WaitForChild("UI"):WaitForChild("StreetTraffic"))
+	local state = scene.traffic
+	local cars, walkers = 0, 0
+	for _, actor in ipairs(state.actors) do
+		if actor.walking then walkers += 1 else cars += 1 end
+		local x1, z1 = traffic.sample(actor.route, 0)
+		local x2, z2 = traffic.sample(actor.route, actor.route.duration)
+		check("continuité du parcours civil", near(x1, x2) and near(z1, z2))
+	end
+	check("population de la ville", cars == 8 and walkers == 8)
+	local route = state.actors[1].route
+	local section = route.sections[1]
+	check("départ sur la voie de droite", section.z > City.STREETS[1] and section.z < City.STREETS[1] + City.ROAD_HALF)
+	local stopTime = section.run - 3 / section.v
+	local xa, za = traffic.sample(route, stopTime)
+	local xb, zb = traffic.sample(route, stopTime + section.pause * 0.5)
+	check("arrêt avant le carrefour", near(xa, xb) and near(za, zb))
+	traffic.sync(state, {time = 12, timeScale = 1})
+	traffic.step(state, 0.2)
+	local previous = state.actors[1].model.WorldPivot.Position
+	traffic.step(state, 0.5)
+	local moved = state.actors[1].model.WorldPivot.Position
+	check("voiture en mouvement", moved.X ~= previous.X or moved.Z ~= previous.Z)
+	traffic.sync(state, {time = 12.7, timeScale = 0})
+	traffic.step(state, 0.1)
+	local frozen = state.actors[1].model.WorldPivot
+	traffic.step(state, 0.5)
+	check("circulation suspendue en pause", state.actors[1].model.WorldPivot == frozen)
+	local fake = {id = 999, x = 9, z = 15, status = Constants.INCIDENT_STATUS.ACTIVE,
+		fireCells = {{x = 9, z = 15, heat = 60, burning = true}}}
+	scene:update({incidents = {fake}, vehicles = {}})
+	local visual = scene.incidents.entries[999]
+	check("foyer actif dessiné", visual.cells[1] ~= nil and visual.cells[1].fire.Size > 3)
+	fake.fireCells[1].burning = false
+	scene:update({incidents = {fake}, vehicles = {}})
+	check("foyer éteint retiré", next(visual.cells) == nil)
+	controller:applySnapshot(SnapshotService.build(world))
+	vsavView = scene.vehicles.entries[vsav.id]
+	cityScene:Destroy()
+end
 
 local firstX = vsavView.x
 vsavView.targetX = firstX + 10
@@ -885,6 +1024,36 @@ check("nouvelle partie appliquée par le serveur", world.budget == Config.START_
 check("action new_game envoyée", lastAction() == "new_game")
 check("menu refermé après confirmation", controller.state.menuOpen == false)
 
+do
+	click(app.tabs.personnel)
+	local panel = app.panels.personnel.root
+	local hire = Widgets.find(panel, "Action_recruit_technician")
+	local id = world.nextPersonnelId
+	local before = world.budget
+	check("tarif du recrutement affiché", string.find(hire.Text, "1 400", 1, true) ~= nil)
+	click(hire)
+	check("recrutement par le panneau", lastAction() == "recruit_personnel" and world.personnel[id] ~= nil)
+	click(Widgets.find(panel, "PersonnelLigne_" .. id))
+	local training = Widgets.find(panel, "Action_train_personnel")
+	click(training)
+	check("formation depuis la fiche", lastAction() == "train_personnel" and world.personnel[id].level == 1)
+	click(Widgets.find(panel, "Action_transfer_personnel"))
+	check("cession depuis la fiche", lastAction() == "transfer_personnel"
+		and world.personnel[id] == nil and world.budget == before - 1400 - 500 + 700)
+	click(app.tabs.budget)
+	check("inflation répercutée sur le catalogue", Widgets.find(app.panels.budget.root, "Achat_VSAV")
+		:FindFirstChild("Cout").Text == Theme.money(Vehicles.get("VSAV").cost + 30))
+	local alternate = {UserId = 17831, Name = "Relève"}
+	NetworkService.handle(world, alternate, "claim_role", {role = Constants.ROLE.COMMANDEMENT})
+	controller:applySnapshot(SnapshotService.build(world))
+	local pass = Widgets.find(app.panels.budget.root, "Action_pass_purchase_turn")
+	check("bouton de passage proposé au titulaire", pass.Active and pass.Visible)
+	click(pass)
+	check("passage de tour depuis le budget", lastAction() == "pass_purchase_turn"
+		and world.purchaseTurn.owner == alternate.UserId and not app.panels.budget.buyButtons.VSAV.Active)
+	world.players[alternate.UserId].connected = false
+end
+
 world.players[player.UserId].role = Constants.ROLE.OBSERVATEUR
 controller:applySnapshot(SnapshotService.build(world))
 check("observateur sans nouvelle partie", app.menu.newGameButton.Visible == false)
@@ -937,25 +1106,27 @@ probe:update({
 })
 check("sirène au départ d'un engin", probe.sirenActive == true
 	and probe.siren ~= nil and probe.siren.Playing == true)
-check("premier ton de la sirène", probe.siren.PlaybackSpeed == Config.AUDIO_SIREN_SPEEDS[1])
-check("alternance vers le second ton", probe:tickSiren() == 2
-	and probe.siren.PlaybackSpeed == Config.AUDIO_SIREN_SPEEDS[2])
-probe:tickSiren()
-check("retour au premier ton", probe.siren.PlaybackSpeed == Config.AUDIO_SIREN_SPEEDS[1])
+check("sirène enregistrée à sa vitesse native", probe.siren.SoundId == Config.AUDIO_SIREN
+	and probe.siren.PlaybackSpeed == 1 and probe.siren.Looped)
+check("annonce vocale de la centrale", probe.voice.IsPlaying and probe.voice.VoiceId == "402"
+	and string.find(probe.radioCaption, "Centre 112", 1, true) ~= nil)
 probe:update({ incidents = {}, vehicles = {} })
 check("sirène coupée au retour", probe.sirenActive == false and probe.siren.Playing == false)
+
+probe:update({ incidents = {}, vehicles = { { id = 1, status = Constants.VEHICLE_STATUS.ON_SCENE } } })
+check("sirène éteinte sur les lieux", probe.siren.Playing == false)
 
 -- Coupure : le groupe tombe à zéro, la sirène s'arrête et les bruits sont
 -- refusés. Le retour du son relance la sirène si un engin est engagé.
 probe:update({
 	incidents = {},
-	vehicles = { { id = 1, status = Constants.VEHICLE_STATUS.ON_SCENE } },
+	vehicles = { { id = 1, status = Constants.VEHICLE_STATUS.DISPATCHED } },
 })
 probe:setMuted(true)
 check("mute coupe le groupe", probe.group.Volume == 0)
 check("mute arrête la sirène", probe.siren.Playing == false and probe.sirenActive == false)
 check("mute bloque les bruits", probe:play("click") == false)
-check("sirène silencieuse en mute", probe:tickSiren() == nil)
+check("radio coupée en mute", probe.voice.Volume == 0 and not probe.voice.IsPlaying)
 probe:setMuted(false)
 check("son rétabli", probe.group.Volume == 1)
 check("sirène relancée si engin engagé", probe.siren.Playing == true)
@@ -975,7 +1146,38 @@ check("bouton revient à SON", app.audioButton.Text == "SON" and audio.muted == 
 check("groupe de l'interface rétabli", audio.group.Volume == 1)
 
 -- ─────────────────────────────────────────────────────────────
+suite("Ordres de terrain depuis le panneau Interventions")
+do
+	controller:command("claim_role", { role = Constants.ROLE.DIRECTION })
+	local testFpt = vehicleOfType("FPT")
+	local assignment = IncidentService.spawn(world, "FEU_VEHICULE", testFpt.home).data
+	controller:applySnapshot(SnapshotService.build(world))
+	controller:select("vehicle", testFpt.id)
+	controller:select("incident", assignment.id)
+	controller:command("auto_crew", {vehicleId = testFpt.id})
+	click(app.panels.incidents.dispatchButton)
+	local orders = app.panels.incidents.orderButtons
+	check("extinction proposée à l'arrivée de l'équipe", orders.extinguish.Visible and orders.extinguish.Active)
+	click(orders.extinguish)
+	check("le clic affecte l'équipe à l'extinction", lastAction() == "field_order" and testFpt.fieldOrder == "extinguish")
+	click(orders.hold)
+	check("changement d'ordre en réserve", testFpt.fieldOrder == "hold" and not orders.hold.Active)
+	check("désincarcération masquée sans victime piégée", not orders.extricate.Visible)
+end
+
 suite("Intégrité du monde après les actions d'interface")
+do
+	click(app.tabs.missions)
+	local panel = app.panels.missions
+	check("panneau Missions ouvert", controller.state.tab == "missions" and panel.root.Visible)
+	check("score initial lisible", string.find(panel.summary.Text, "Score 0", 1, true) ~= nil)
+	click(panel.buttons.eglise)
+	check("lancement de l’église relié au serveur", lastAction() == "start_mission" and world.mission.id == "eglise")
+	check("objectifs et disponibilité actualisés", panel.links[1].Active and not panel.links[2].Active and not panel.buttons.route.Active)
+	click(panel.links[1])
+	check("objectif ouvre la fiche de son intervention", controller.state.tab == "incidents"
+		and controller:selectedIncident().id == world.mission.incidentIds[1])
+end
 -- ─────────────────────────────────────────────────────────────
 local finalSnapshot = SnapshotService.build(world)
 check("snapshot final sérialisable", SnapshotService.isSerializable(finalSnapshot) == true)

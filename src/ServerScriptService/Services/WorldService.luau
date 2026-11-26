@@ -110,6 +110,12 @@ WorldService.startingPersonnel = {
 		experience = 52,
 		qualifications = { POLICIER = true, GENDARME = true, CONDUCTEUR = true },
 	},
+	{
+		name = "Technicien Delmas",
+		grade = "Technicien",
+		service = "technical",
+		qualifications = { TECHNICIEN = true, CONDUCTEUR = true },
+	},
 }
 
 -- Crée le parc, l'effectif et le stock de départ dans un monde déjà initialisé.
@@ -209,6 +215,7 @@ function WorldService.reset(world: any, options: any?): any
 	options = options or {}
 
 	world.budget = world.config.START_BUDGET
+	world.purchaseTurn = nil
 	table.clear(world.transactions)
 	table.clear(world.vehicles)
 	table.clear(world.personnel)
@@ -225,6 +232,7 @@ function WorldService.reset(world: any, options: any?): any
 	world.finished = false
 	world.saveRequested = true
 	world.lightingHour = nil
+	world.mission = nil
 
 	world.nextVehicleId = 1
 	world.nextPersonnelId = 1

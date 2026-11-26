@@ -14,6 +14,8 @@
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local City = require(Shared:WaitForChild("City"))
 local Rng = require(Shared:WaitForChild("Utilities"):WaitForChild("Rng"))
+local Services = game:GetService("ServerScriptService"):WaitForChild("ERS"):WaitForChild("Services")
+local Architecture = require(Services:WaitForChild("Architecture"))
 
 local SceneService = {}
 
@@ -210,6 +212,13 @@ local function buildBuildings(scene: any, plan: any, scale: number, config: any)
 		local centerX = (xMin + xMax) / 2
 		local centerZ = (zMin + zMax) / 2
 
+		if building.style == "caserne" then
+			continue -- La remise et sa tour sont construites avec leur parvis.
+		elseif building.style == "eglise" then
+			Architecture.church(folder, decoration, centerX, centerZ, width, depth, height)
+			continue
+		end
+
 		makePart(
 			folder,
 			"Batiment_" .. index,
@@ -233,6 +242,7 @@ local function buildBuildings(scene: any, plan: any, scale: number, config: any)
 			xMax = xMax,
 			zMax = zMax,
 		}, scale, floors, config.FLOOR_HEIGHT)
+		Architecture.detail(folder, decoration, building, centerX, centerZ, width, depth, height, index)
 	end
 end
 
@@ -297,7 +307,7 @@ local function buildGround(scene: any, plan: any, scale: number, config: any): (
 	-- Le sol s'arrête à la ceinture boisée : plus de dalle géante qui déborde
 	-- de la carte et laisse voir son bord sous l'horizon.
 	local ground = makePart(scene, "Sol", Vector3.new(size, 2, size),
-		Vector3.new(size / 2, -1, size / 2), config.GROUND_COLOR, Enum.Material.Grass)
+		Vector3.new(City.WIDTH * scale / 2, -1, City.WIDTH * scale / 2), config.GROUND_COLOR, Enum.Material.Grass)
 	ground.Name = "Sol"
 
 	local lots = Instance.new("Folder")
@@ -432,9 +442,21 @@ local function buildBarracks(scene: any, plan: any, scale: number, config: any):
 		Color3.fromRGB(66, 42, 40), Enum.Material.Slate)
 
 	for door = 0, 3 do
-		decoration(folder, "Remise_" .. door, Vector3.new(4.2, 5.2, 0.3),
-			Vector3.new(bx0 + 6 + door * (bx1 - bx0 - 12) / 3, 2.7, bz1 + 0.16),
+		local doorX = bx0 + 6 + door * (bx1 - bx0 - 12) / 3
+		decoration(folder, "Remise_" .. door, Vector3.new(7.6, 5.2, 0.3),
+			Vector3.new(doorX, 2.7, bz1 + 0.16),
 			Color3.fromRGB(58, 52, 50), Enum.Material.Metal)
+		for panel = 1, 4 do
+			decoration(folder, "SectionRemise", Vector3.new(7.5, panel == 3 and 0.70 or 0.10, 0.14),
+				Vector3.new(doorX, 0.35 + panel, bz1 + 0.35), Color3.fromRGB(112, 135, 145), Enum.Material.Metal)
+		end
+	end
+	local towerX, towerZ = bx0 + 6, bz0 + 5
+	makePart(folder, "TourDeSechage", Vector3.new(8, 18, 8), Vector3.new(towerX, 9, towerZ),
+		Color3.fromRGB(154, 85, 65), Enum.Material.Brick)
+	for level = 1, 3 do
+		decoration(folder, "OuvertureTour", Vector3.new(3.1, 2.25, 0.15), Vector3.new(towerX, 7 + level * 3, towerZ + 4.1),
+			Color3.fromRGB(60, 68, 72), Enum.Material.Metal)
 	end
 
 	-- Bandeau « CASERNE » au-dessus des remises.

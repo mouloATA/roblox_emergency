@@ -51,6 +51,7 @@ City.DISTRICTS = {
 
 -- Points d'intérêt : un par bloc réservé, pour que la ville ait des repères.
 local POIS = {
+	{ id = "eglise", name = "Église Saint-Marc", block = { 3, 2 }, style = "eglise", floors = 4 },
 	{ id = "hopital", name = "Hôpital", block = { 4, 1 }, style = "public", floors = 6 },
 	{ id = "commissariat", name = "Commissariat", block = { 2, 2 }, style = "public", floors = 3 },
 	{ id = "ecole", name = "École", block = { 1, 2 }, style = "public", floors = 3 },

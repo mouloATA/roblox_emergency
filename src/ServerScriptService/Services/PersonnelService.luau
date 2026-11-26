@@ -18,6 +18,10 @@ local ServerScript = game:GetService("ServerScriptService"):WaitForChild("ERS")
 local Services = ServerScript:WaitForChild("Services")
 local PermissionService = require(Services:WaitForChild("PermissionService"))
 
+local BudgetService = require(Services:WaitForChild("BudgetService"))
+local PurchaseService = require(Services:WaitForChild("PurchaseService"))
+local Recruitment = require(Shared:WaitForChild("Catalogs"):WaitForChild("Recruitment"))
+
 local PersonnelService = {}
 
 local VALID_SERVICES = {
@@ -58,6 +62,8 @@ function PersonnelService.create(world: any, data: any): any
 		service = data.service,
 		qualifications = qualifications,
 		experience = data.experience or 0,
+		level = 0,
+		hireCost = data.hireCost or 1200,
 		fatigue = data.fatigue or 0,
 		health = data.health or 100,
 		status = Constants.VEHICLE_STATUS.AVAILABLE,
@@ -68,6 +74,66 @@ function PersonnelService.create(world: any, data: any): any
 	return Result.ok(person.name .. " intègre le service.", person)
 end
 
+-- Recrute un membre qualifié sur le budget commun.
+function PersonnelService.recruit(world: any, actorId: number, profileId: string): any
+	local check = PurchaseService.check(world, actorId)
+	if not check.ok then return check end
+	local profile = Recruitment.byId[profileId]
+	if not profile then return Result.err("Profil inconnu.") end
+	local count = 0
+	for _ in pairs(world.personnel) do count += 1 end
+	if count >= Recruitment.maxPersonnel then return Result.err("Effectif complet.") end
+	local price = PurchaseService.price(world, profile.cost)
+	if not BudgetService.canAfford(world, price) then return Result.err("Budget insuffisant.") end
+	local data = table.clone(profile)
+	data.name = string.format("%s %d", profile.grade, world.nextPersonnelId)
+	data.hireCost = price
+	local created = PersonnelService.create(world, data)
+	if not created.ok then return created end
+	BudgetService.spend(world, price, "Recrutement de " .. data.name)
+	PurchaseService.advance(world, actorId, true)
+	Operations.log(world, Constants.LOG.MONEY, created.message)
+	return created
+end
+
+local function availableForTransfer(world: any, actorId: number, personId: number): any
+	local check = PurchaseService.check(world, actorId)
+	if not check.ok then return check end
+	local person = world.personnel[personId]
+	if not person then return Result.err("Membre inconnu.") end
+	if person.vehicleId then return Result.err("Retirez d’abord ce membre de son équipage.") end
+	return Result.ok("", person)
+end
+
+-- Transfère un membre libre à un autre centre et crédite son indemnité.
+function PersonnelService.transfer(world: any, actorId: number, personId: number): any
+	local available = availableForTransfer(world, actorId, personId)
+	if not available.ok then return available end
+	local person = available.data
+	local result = BudgetService.earn(world, Recruitment.transferValue(person), "Transfert de " .. person.name)
+	world.personnel[personId] = nil
+	PurchaseService.advance(world, actorId, false)
+	Operations.log(world, Constants.LOG.MONEY, result.message)
+	return result
+end
+
+-- Forme un membre libre ; chaque niveau réduit sa fatigue en intervention de 10 %.
+function PersonnelService.train(world: any, actorId: number, personId: number): any
+	local available = availableForTransfer(world, actorId, personId)
+	if not available.ok then return available end
+	local person = available.data
+	local level = person.level or 0
+	if level >= Recruitment.maxLevel then return Result.err("Formation maximale atteinte.") end
+	local payment = BudgetService.spend(world, Recruitment.trainingCost(level), "Formation de " .. person.name)
+	if not payment.ok then return payment end
+	person.level = level + 1
+	PurchaseService.advance(world, actorId, false)
+	local message = string.format("%s passe au niveau %d.", person.name, person.level)
+	Operations.log(world, Constants.LOG.MONEY, message)
+	return Result.ok(message)
+end
+
+-- Affecte un membre à un équipage disponible.
 function PersonnelService.assign(world: any, actorId: number, personId: number, vehicleId: number): any
 	local person = world.personnel[personId]
 	if not person then
@@ -174,10 +240,11 @@ function PersonnelService.stepFatigue(world: any, dt: number): ()
 	for _, person in pairs(world.personnel) do
 		local vehicle = person.vehicleId and world.vehicles[person.vehicleId] or nil
 		local onOperation = vehicle
-			and (vehicle.status == Constants.VEHICLE_STATUS.DISPATCHED or vehicle.status == Constants.VEHICLE_STATUS.ON_SCENE)
+			and (vehicle.status == Constants.VEHICLE_STATUS.DISPATCHED or vehicle.status == Constants.VEHICLE_STATUS.ON_SCENE
+				or vehicle.status == Constants.VEHICLE_STATUS.TRANSPORTING or vehicle.status == Constants.VEHICLE_STATUS.HANDOVER)
 
 		if onOperation then
-			person.fatigue += world.config.FATIGUE_PER_SECOND * dt
+			person.fatigue += world.config.FATIGUE_PER_SECOND * dt * (1 - 0.1 * (person.level or 0))
 		elseif vehicle then
 			person.fatigue += world.config.FATIGUE_ASSIGNED * dt
 		else

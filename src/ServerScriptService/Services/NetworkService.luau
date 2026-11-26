@@ -29,7 +29,10 @@ local SimulationService = require(Services:WaitForChild("SimulationService"))
 local SnapshotService = require(Services:WaitForChild("SnapshotService"))
 local WorldService = require(Services:WaitForChild("WorldService"))
 
+local PurchaseService = require(Services:WaitForChild("PurchaseService"))
+
 local NetworkService = {}
+local MissionService = require(Services:WaitForChild("MissionService"))
 
 local function isId(value: any): boolean
 	return type(value) == "number" and value > 0 and value % 1 == 0 and value < 1e9
@@ -81,7 +84,22 @@ local function identityOf(player: any): (number?, string?)
 	return userId, name
 end
 
+local FieldService = require(Services:WaitForChild("FieldService"))
 local handlers = {}
+
+handlers.start_mission = function(world: any, userId: number, payload: any): any
+	if not isText(payload.missionId, 32) then
+		return Result.err("Identifiant de mission invalide.")
+	end
+	return MissionService.start(world, userId, payload.missionId)
+end
+
+handlers.field_order = function(world: any, userId: number, payload: any): any
+	if not isId(payload.vehicleId) or not isIncidentId(payload.incidentId) or not isText(payload.order, 16) then
+		return Result.err("Ordre de terrain invalide.")
+	end
+	return FieldService.giveOrder(world, userId, payload.vehicleId, payload.incidentId, payload.order)
+end
 
 handlers.dispatch = function(world: any, userId: number, payload: any): any
 	if not isId(payload.vehicleId) then
@@ -139,6 +157,28 @@ handlers.uninstall_equipment = function(world: any, userId: number, payload: any
 		return Result.err("Quantité invalide.")
 	end
 	return EquipmentService.uninstall(world, userId, payload.vehicleId, payload.equipmentId, payload.quantity)
+end
+
+handlers.recruit_personnel = function(world: any, actorId: number, payload: any): any
+	if not isText(payload.profileId, 32) then return Result.err("Profil de recrutement invalide.") end
+	return PersonnelService.recruit(world, actorId, payload.profileId)
+end
+
+handlers.transfer_personnel = function(world: any, actorId: number, payload: any): any
+	if not isId(payload.personId) then return Result.err("Membre invalide.") end
+	return PersonnelService.transfer(world, actorId, payload.personId)
+end
+
+handlers.train_personnel = function(world: any, actorId: number, payload: any): any
+	if not isId(payload.personId) then return Result.err("Membre invalide.") end
+	return PersonnelService.train(world, actorId, payload.personId)
+end
+
+handlers.pass_purchase_turn = function(world: any, actorId: number, _payload: any): any
+	local check = PurchaseService.check(world, actorId)
+	if not check.ok then return check end
+	PurchaseService.advance(world, actorId, false)
+	return Result.ok("Tour d’achat transmis.")
 end
 
 handlers.buy_vehicle = function(world: any, userId: number, payload: any): any

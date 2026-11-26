@@ -3,6 +3,39 @@
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 Le projet suit une version `MAJEUR.MINEUR.CORRECTIF`.
 
+## [Non publié] — 2026-11-26
+
+### Jeu local 0.4.0
+
+- Les équipages reçoivent des ordres d’extinction, de sauvetage, de désincarcération et de réserve. Les matériaux, la propagation et les réserves d’eau déterminent l’évolution des foyers.
+- Les ambulances équipées chargent les victimes selon leur capacité, suivent les rues, transmettent les patients aux urgences et reviennent chercher les suivants.
+- Le panneau Missions propose l’église, la collision routière et la forêt avec deux objectifs par scénario. Les bilans alimentent le score, l’évaluation sur 100, les pertes civiles et six distinctions adaptées d’EM4.
+- La caserne accueille un technicien au départ et permet le recrutement, la cession et trois niveaux de formation. Direction et Commandement alternent les achats. Chaque acquisition augmente les tarifs de 30 €. Le jeu relit les sauvegardes 0.3.0.
+- Des véhicules spécialisés, des façades et la circulation des passants et des voitures animent la ville. Le HUD adapte ses panneaux et sa typographie à la taille du bureau.
+- Une sirène française enregistrée et des messages radio sous-titrés accompagnent les alertes et les équipages. [Attribution](../assets/ATTRIBUTION.md)
+- La caméra tactique reprend sa position après le chargement du personnage ou le remplacement de la caméra Roblox. Son champ de vision est de 34°. Le titre et les commandes du HUD respectent la zone réservée à Roblox.
+- Dans Studio 0.748.0.7481526, *Fumée au clocher* s’est terminée avec une admission aux urgences. À 21 h 02, le moteur comptait 60 lampadaires allumés et 334 vitres lumineuses. Les étoiles et la lune étaient actives. La lecture de la sirène (10,92 s) et de la voix française a produit un signal mesurable côté client.
+- Les quatre suites locales passent avec 950 assertions. La session Studio instrumentée a mesuré un HUD de 1450 × 734. Les tests de disposition couvrent également 1024 × 768, 1280 × 720, 1920 × 1080 et 2560 × 1440.
+
+### Ajouté
+
+- 134 scripts texte du jeu EM4 de base, fournis dans `03_SCRIPTS_EM4.zip`,
+  installés dans `references/em4_base/` comme exemples de logique à réimplémenter.
+  Référence locale ignorée par Git, hors du projet Rojo ; aucun script du mod
+  CSP-IRG ni fichier binaire n'a été ajouté.
+- `references/README.md` explique la provenance et l'usage de ces exemples.
+- L’onglet **Missions** propose trois scénarios jouables (église Saint-Marc,
+  collision au carrefour et feu de lisière). Les appels de renfort sont déclenchés
+  par l’arrivée au parvis, le balisage du carrefour et un signalement radio à 35 s.
+  Chaque objectif ouvre la fiche de son intervention. La direction et le
+  commandement peuvent lancer ou rejouer un scénario.
+- Le bilan comptabilise la gravité, les admissions, les pertes civiles et la
+  rapidité de la première arrivée. Le score, l’évaluation et les distinctions
+  sont sauvegardés avec les statistiques. Les six catégories EM4 sont adaptées
+  au jeu local (secours médical, police, incendie, sauvetage cynophile, gestion
+  de catastrophe et or national) avec des seuils propres à ERS. Le maître-chien
+  peut être recruté et embarqué sur un engin de sauvetage.
+
 ## [0.3.0] — 2026-11-20 — Phase 2 : réseau routier et catalogues enrichis
 
 ### Ajouté

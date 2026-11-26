@@ -143,6 +143,22 @@ function IncidentPanel.create(parent: any, context: any): any
 		TextColor3 = Theme.colors.info,
 	})
 
+	local fieldStatus = Widgets.label(detail, "BilanTerrain", "", {
+		Size = UDim2.new(1, 0, 0, 56), TextSize = Theme.text.small,
+		TextWrapped = true, TextColor3 = Theme.colors.textDim,
+	})
+	local orderButtons = {}
+	for _, order in ipairs({ "auto", "hold", "extinguish", "rescue", "extricate" }) do
+		local button = Widgets.button(detail, "Ordre_" .. order, Constants.FIELD_LABEL[order], function()
+			local vehicle, incident = controller:selectedVehicle(), controller:selectedIncident()
+			if vehicle and incident then
+				controller:command("field_order", { incidentId = incident.id, vehicleId = vehicle.id, order = order })
+			end
+		end, { Size = UDim2.new(1, -6, 0, 30), TextSize = Theme.text.small })
+		button.Visible = false
+		orderButtons[order] = button
+	end
+
 	local actions = Widgets.horizontal(detail, "Actions", {
 		Size = UDim2.new(1, 0, 0, 38),
 		BackgroundTransparency = 1,
@@ -224,7 +240,7 @@ function IncidentPanel.create(parent: any, context: any): any
 		entry.deadline.Text = incident.status == Constants.INCIDENT_STATUS.PENDING
 				and ("Prise en charge dans " .. Theme.seconds(incident.deadlineIn))
 			or (incident.status == Constants.INCIDENT_STATUS.ACTIVE
-				and ("Étape " .. math.min(incident.stepIndex + 1, math.max(1, incident.stepCount)) .. "/" .. incident.stepCount)
+				and ("Étape " .. math.min(incident.stepIndex, math.max(1, incident.stepCount)) .. "/" .. incident.stepCount)
 				or "Clôturée")
 		entry.deadline.TextColor3 = incident.deadlineIn <= 20 and Theme.colors.danger or Theme.colors.warning
 		Widgets.setSelected(entry.instance, controller.state.incidentId == incident.id)
@@ -258,6 +274,8 @@ function IncidentPanel.create(parent: any, context: any): any
 			requiresLabel.Text = ""
 			needsLabel.Text = ""
 			onSceneLabel.Text = ""
+			fieldStatus.Visible = false
+			for _, button in pairs(orderButtons) do button.Visible = false end
 			engagementHint.Text = "Sélectionnez une intervention, puis un engin."
 			Widgets.setEnabled(dispatchButton, false)
 			Widgets.setEnabled(recallButton, false)
@@ -283,10 +301,15 @@ function IncidentPanel.create(parent: any, context: any): any
 		progressBar.setColor(statusColor(incident.status))
 		if incident.status == Constants.INCIDENT_STATUS.PENDING then
 			progressLabel.Text = "En attente d'engagement — aucun moyen sur place."
+		elseif incident.evacuating and incident.status == Constants.INCIDENT_STATUS.ACTIVE then
+			progressLabel.Text = "Évacuation vers les urgences"
+			progressBar.set(incident.savedVictims / math.max(1, incident.victims))
+		elseif incident.fieldStep and incident.status == Constants.INCIDENT_STATUS.ACTIVE then
+			progressLabel.Text = string.format("Étape %d/%d · %s · %d %%", incident.stepIndex, incident.stepCount, incident.stepLabel, math.floor(ratio * 100))
 		elseif incident.status == Constants.INCIDENT_STATUS.ACTIVE then
 			progressLabel.Text = string.format(
 				"Étape %d/%d : %s (%s/%s)",
-				math.min(incident.stepIndex + 1, math.max(1, incident.stepCount)),
+				math.min(incident.stepIndex, math.max(1, incident.stepCount)),
 				incident.stepCount,
 				incident.stepLabel,
 				Theme.seconds(incident.stepProgress),
@@ -313,6 +336,44 @@ function IncidentPanel.create(parent: any, context: any): any
 		local vehicle = controller:selectedVehicle()
 		local closed = incident.status == Constants.INCIDENT_STATUS.RESOLVED
 			or incident.status == Constants.INCIDENT_STATUS.FAILED
+		local fieldLines = {}
+		if #(incident.fireCells or {}) > 0 then
+			local flames, loss = 0, 0
+			for _, cell in ipairs(incident.fireCells) do
+				if cell.burning then flames += 1 end
+				if cell.spent then loss += 1 end
+			end
+			table.insert(fieldLines, string.format("Feu · %d foyer(s) actif(s), %d zone(s) brûlée(s), %d L appliqués", flames, loss, incident.waterUsed or 0))
+		end
+		if (incident.rescueTarget or 0) > 0 then table.insert(fieldLines, string.format("Mises à l'abri · %d/%d", incident.rescued, incident.rescueTarget)) end
+		if (incident.extricationTarget or 0) > 0 then table.insert(fieldLines, string.format("Désincarcérations · %d/%d", incident.extricated, incident.extricationTarget)) end
+		if incident.evacuating then
+			table.insert(fieldLines, string.format("Urgences · %d en attente, %d en transport, %d admise(s)",
+				incident.victims - incident.savedVictims - incident.inTransit, incident.inTransit, incident.savedVictims))
+		end
+		if vehicle and vehicle.incidentId == incident.id then
+			local team = vehicle.callsign
+			if vehicle.status == Constants.VEHICLE_STATUS.TRANSPORTING and vehicle.route then
+				team ..= string.format(" · %d à bord · urgences dans %s", vehicle.patients, Theme.seconds(math.max(0, vehicle.route.startTime + vehicle.route.duration - snapshot.time)))
+			elseif vehicle.status == Constants.VEHICLE_STATUS.HANDOVER then
+				team ..= " · admission dans " .. Theme.seconds(vehicle.handoverIn or 0)
+			elseif vehicle.status == Constants.VEHICLE_STATUS.ON_SCENE then
+				team ..= " · " .. (Constants.FIELD_LABEL[vehicle.fieldActivity or vehicle.fieldOrder or "auto"] or "Disponible")
+				if (vehicle.waterCapacity or 0) > 0 then team ..= string.format(" · %d L en cuve", vehicle.water) end
+				if (vehicle.patientCapacity or 0) > 0 then team ..= string.format(" · %d place(s) sanitaire(s)", vehicle.patientCapacity) end
+			end
+			table.insert(fieldLines, team)
+		end
+		fieldStatus.Visible = #fieldLines > 0
+		fieldStatus.Size = UDim2.new(1, 0, 0, math.max(22, #fieldLines * 32))
+		fieldStatus.Text = table.concat(fieldLines, "\n")
+		for order, button in pairs(orderButtons) do
+			button.Visible = vehicle ~= nil and vehicle.incidentId == incident.id and table.find(vehicle.fieldChoices or {}, order) ~= nil
+			if button.Visible then
+				button.Text = Constants.FIELD_LABEL[order] .. " · " .. vehicle.callsign
+				Widgets.setEnabled(button, vehicle.fieldOrder ~= order and controller:can("dispatch") and controller:canService(vehicle.service))
+			end
+		end
 		local canDispatch = vehicle ~= nil
 			and not closed
 			and vehicle.status == Constants.VEHICLE_STATUS.AVAILABLE
@@ -321,6 +382,7 @@ function IncidentPanel.create(parent: any, context: any): any
 			and controller:canService(vehicle.service)
 		local canRecall = vehicle ~= nil
 			and vehicle.incidentId == incident.id
+			and (vehicle.patients or 0) == 0
 			and controller:can("recall")
 			and controller:canService(vehicle.service)
 
@@ -345,6 +407,7 @@ function IncidentPanel.create(parent: any, context: any): any
 		root = root,
 		update = update,
 		rows = rows,
+		orderButtons = orderButtons,
 		dispatchButton = dispatchButton,
 		recallButton = recallButton,
 		engagementHint = engagementHint,

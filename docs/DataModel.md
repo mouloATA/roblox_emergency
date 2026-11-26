@@ -18,10 +18,12 @@ Construite par `WorldService.create(config, catalogs, options?)`.
 
 | Champ | Type | Rôle |
 | --- | --- | --- |
-| `version` | string | version du format (`0.3.0`) |
+| `version` | string | version du format (`0.4.0`, lecture de `0.3.0` prise en charge) |
 | `config` | table | `Config` partagé |
 | `catalogs` | table | `{ vehicles, qualifications, equipment, incidents, permissions }` |
 | `budget` | number | solde courant, peut être négatif |
+| `purchaseTurn` | table de session | responsable des achats et expiration selon les postes en ligne |
+| `mission` | table de session | scénario et interventions qui portent ses objectifs |
 | `transactions` | array | 120 dernières écritures |
 | `vehicles` | map `id → vehicle` | flotte |
 | `personnel` | map `id → person` | effectifs |

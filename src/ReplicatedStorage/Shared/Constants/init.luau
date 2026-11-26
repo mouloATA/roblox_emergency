@@ -13,9 +13,15 @@ Constants.VEHICLE_STATUS = {
 	AVAILABLE = "available", -- au poste, prêt à partir
 	DISPATCHED = "dispatched", -- en route vers une intervention
 	ON_SCENE = "onscene", -- sur les lieux
+	TRANSPORTING = "transporting", -- victimes à bord
+	HANDOVER = "handover", -- transmission aux urgences
 	RETURNING = "returning", -- retour au poste
 	MAINTENANCE = "maintenance", -- à l'atelier
 }
+
+-- Consignes d'un équipage engagé sur le terrain.
+Constants.FIELD_ORDER = { AUTO = "auto", HOLD = "hold", EXTINGUISH = "extinguish", RESCUE = "rescue", EXTRICATE = "extricate" }
+Constants.FIELD_LABEL = { auto = "Automatique", hold = "Réserve", extinguish = "Extinction", rescue = "Sauvetage", extricate = "Désincarcération" }
 
 -- États d'une intervention.
 Constants.INCIDENT_STATUS = {
@@ -69,6 +75,7 @@ Constants.ACTION = {
 	SAVE = "save",
 	SET_TIME = "set_time",
 	NEW_GAME = "new_game",
+	START_MISSION = "start_mission",
 }
 
 -- Catégories d'équipement (spec §8).
@@ -110,6 +117,8 @@ Constants.STATUS_LABEL = {
 	available = "Disponible",
 	dispatched = "En route",
 	onscene = "Sur place",
+	transporting = "Vers les urgences",
+	handover = "Aux urgences",
 	returning = "Retour",
 	maintenance = "Atelier",
 	pending = "Nouvelle",
