@@ -44,8 +44,9 @@ local controller = InterfaceController.new({
 -- barre inférieure reçoivent ainsi la même caméra que les raccourcis.
 local camera = CameraController.new()
 camera:mount()
-game:GetService("RunService"):BindToRenderStep("ERS_Camera", Enum.RenderPriority.Camera.Value + 1, function()
+game:GetService("RunService"):BindToRenderStep("ERS_Camera", Enum.RenderPriority.Camera.Value + 1, function(dt)
 	camera:syncCamera(workspace.CurrentCamera)
+	camera:step(dt)
 end)
 -- Les joueurs et leurs postes sont déjà accessibles dans le panneau Postes.
 game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)

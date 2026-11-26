@@ -434,6 +434,18 @@ function MiniMap.create(parent: any, context: any): any
 	})
 	layerButtons.personnel = crewButton
 
+	local navigation = Widgets.button(host, "NaviguerCarte", "", function() end, {
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 10, AutoButtonColor = false,
+	})
+	markerLayer.ZIndex = 11
+	navigation.MouseButton1Down:Connect(function(x: number, y: number)
+		if not camera then return end
+		local size, origin = host.AbsoluteSize, host.AbsolutePosition
+		if size.X <= 0 or size.Y <= 0 then return end
+		camera:focus(math.clamp((x-origin.X)/size.X, 0, 1)*City.WIDTH,
+			math.clamp((y-origin.Y)/size.Y, 0, 1)*City.WIDTH)
+	end)
+
 	local function update(snapshot: any, state: any, view: any?): ()
 		local units = snapshot.vehicles or {}
 		local incidents = snapshot.incidents or {}

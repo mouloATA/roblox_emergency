@@ -11,8 +11,8 @@
 	- `distance`  : rayon de l'orbite, en studs ;
 	- `yaw`       : orientation autour de la cible, en degrés.
 
-	Les setters appliquent immédiatement le nouveau cadrage : l'interface
-	reste réactive, et les tests peuvent vérifier la caméra sans boucle de jeu.
+	Les commandes mettent à jour la cible immédiatement. Le cadrage affiché
+	converge vers cette cible à chaque image avec une interpolation exponentielle.
 ]]
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -40,20 +40,23 @@ function CameraController.new(options: any?): any
 	self.followId = nil
 	self.viewport = { width = 16, height = 9 }
 	self.mounted = false
+	self.display = { x = self.target.x, z = self.target.z, distance = self.distance, yaw = self.yaw }
 	return self
 end
 
 -- Position de la caméra pour le cadrage courant (studs).
-function CameraController.position(self: any): Vector3
+function CameraController.position(self: any, pose: any?): Vector3
+	local target = pose or self.target
+	local distance = pose and pose.distance or self.distance
 	local pitch = math.rad(self.config.CAMERA_PITCH)
-	local horizontal = self.distance * math.cos(pitch)
-	local height = self.distance * math.sin(pitch)
-	local yaw = math.rad(self.yaw)
+	local horizontal = distance * math.cos(pitch)
+	local height = distance * math.sin(pitch)
+	local yaw = math.rad(pose and pose.yaw or self.yaw)
 	local scale = self.config.WORLD_SCALE
 	return Vector3.new(
-		self.target.x * scale + math.sin(yaw) * horizontal,
+		target.x * scale + math.sin(yaw) * horizontal,
 		height,
-		self.target.z * scale + math.cos(yaw) * horizontal
+		target.z * scale + math.cos(yaw) * horizontal
 	)
 end
 
@@ -62,10 +65,31 @@ function CameraController.apply(self: any): ()
 		return
 	end
 	local scale = self.config.WORLD_SCALE
-	local lookAt = Vector3.new(self.target.x * scale, 0, self.target.z * scale)
+	local lookAt = Vector3.new(self.display.x * scale, 0, self.display.z * scale)
 	self.camera.CameraType = Enum.CameraType.Scriptable
 	self.camera.FieldOfView = self.config.CAMERA_FOV
-	self.camera.CFrame = CFrame.lookAt(self:position(), lookAt)
+	self.camera.CFrame = CFrame.lookAt(self:position(self.display), lookAt)
+end
+
+-- Interpole le cadrage à chaque image, avec une réponse indépendante de la fréquence d'affichage.
+function CameraController.step(self: any, dt: number): ()
+	local alpha = 1 - math.exp(-18 * math.max(0, dt))
+	self.display.x += (self.target.x - self.display.x) * alpha
+	self.display.z += (self.target.z - self.display.z) * alpha
+	self.display.distance += (self.distance - self.display.distance) * alpha
+	self.display.yaw += ((self.yaw - self.display.yaw + 180) % 360 - 180) * alpha
+	self:apply()
+end
+
+-- Déplacement relatif à l'écran et proportionnel au zoom courant.
+function CameraController.panScreen(self: any, dx: number, dy: number): ()
+	local units = 2 * self.distance * math.tan(math.rad(self.config.CAMERA_FOV) / 2)
+		/ math.max(1, self.viewport.height) / self.config.WORLD_SCALE
+	local yaw = math.rad(self.yaw)
+	local vertical = dy / math.sin(math.rad(self.config.CAMERA_PITCH))
+	self.followId = nil
+	self:pan((math.cos(yaw) * dx + math.sin(yaw) * vertical) * units,
+		(-math.sin(yaw) * dx + math.cos(yaw) * vertical) * units)
 end
 
 function CameraController.mount(self: any): ()
@@ -84,6 +108,7 @@ end
 
 -- Déplace le point visé (unités de carte).
 function CameraController.pan(self: any, dx: number, dz: number): ()
+	self.followId = nil
 	local margin = self.config.CAMERA_MARGIN
 	local size = self.config.MAP_SIZE
 	self.target.x = MathX.clamp(self.target.x + dx, -margin, size + margin)

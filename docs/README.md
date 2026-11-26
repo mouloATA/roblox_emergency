@@ -35,14 +35,14 @@ Le fichier local `build/ERS.rbxlx` s’ouvre dans Roblox Studio. Utilisez **F5**
 
 ## Vérifications locales
 
-Le contrôle de syntaxe couvre 77 fichiers Luau. Les quatre suites totalisent **1 095 assertions réussies**.
+Le contrôle de syntaxe couvre 77 fichiers Luau. Les quatre suites totalisent **1 103 assertions réussies**.
 
 | Suite | Assertions |
 | --- | ---: |
 | Unitaire | 124 |
 | Intégration | 267 |
 | Multijoueur | 85 |
-| Interface | 619 |
+| Interface | 627 |
 
 Les tests déroulent les trois missions, les navettes vers l’hôpital et le passage de 19 h à 21 h. Ils mesurent le HUD en 1024 × 768, 1280 × 720, 1920 × 1080 et 2560 × 1440. Dans Roblox Studio, la mission de l’église a été menée jusqu’à l’admission d’une victime. Le crépuscule et le HUD corrigé ont été observés en partie. À 21 h, la sonde comptait 60 lampadaires et 334 vitres allumés. Le client a mesuré un signal en sortie de la radio et pendant la lecture de la sirène.
 
@@ -52,7 +52,8 @@ Les tests déroulent les trois missions, les navettes vers l’hôpital et le pa
 | --- | --- |
 | `1` … `7` | sélectionne le groupe tactique s'il existe, sinon ouvre le panneau (Interventions, Flotte, Personnel, Matériel, Commandement, Achats et finances, Postes) |
 | `8` | ouvre les missions, les objectifs et le bulletin de service |
-| `WASD` / flèches | déplace la caméra |
+| `WASD` / flèches maintenues | déplacement continu avec accélération et freinage progressifs |
+| Glisser avec le bouton gauche sur la ville | déplace la caméra dans le sens du glissement |
 | `+` / `-` | zoome / dézoome |
 | `Q` / `E` | pivote la caméra par quarts de tour |
 | `Espace` | pause / reprise de la simulation (validée par le serveur) |
@@ -61,7 +62,7 @@ Les tests déroulent les trois missions, les navettes vers l’hôpital et le pa
 | `Échap` | réservé au menu Roblox : l'interface ne l'intercepte pas |
 | `Ctrl+S` | demande une sauvegarde (si le poste y a droit) ; `S` seul déplace la caméra |
 | Molette | zoom |
-| Clic sur la mini-carte | sélectionne une urgence ou un engin, ouvre le panneau et braque la caméra |
+| Clic sur la mini-carte | recentre sur le point choisi ; un marqueur sélectionne aussi son urgence ou son engin |
 | Double-clic | recentre sur l'unité sélectionnée |
 
 ## Arborescence

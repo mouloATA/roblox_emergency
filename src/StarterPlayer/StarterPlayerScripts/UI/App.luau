@@ -496,6 +496,21 @@ function App.create(parent: any, context: any): any
 		self.scene = scene
 	end
 
+	-- Interroge la géométrie Roblox finale, y compris les panneaux déplacés et redimensionnés.
+	function app:isHudAt(position: any): boolean
+		for _, object in ipairs(parent:GetGuiObjectsAtPosition(position.X, position.Y)) do
+			local node = object
+			while node and node ~= parent do
+				if node == topBar or node == menu.root then return true end
+				for _, entry in pairs(editor.entries) do
+					if node == entry.panel or node == entry.overlay then return true end
+				end
+				node = node.Parent
+			end
+		end
+		return false
+	end
+
 	function app:render(state: any, snapshot: any)
 		editor:restore()
 		local vehicles = snapshot.vehicles or {}

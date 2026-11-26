@@ -1471,6 +1471,57 @@ do
 	check("panneaux inconnus refusés", service.validate({alien={x=0,y=0,scale=1}})==nil)
 	check("repli local explicite sans DataStore", service.new(nil)({UserId=126},layout).persistent==false)
 end
+do
+	controller:setMenu(false)
+	controller:closeDrawer()
+	camera:reset()
+	camera:setViewport(1280,720)
+	local controls = InputController.new(controller, app, camera)
+	controls:mount()
+	local inputs = game:GetService("UserInputService")
+	local key = {KeyCode=Enum.KeyCode.Right, UserInputType=Enum.UserInputType.Keyboard}
+	inputs.InputBegan:Fire(key,false)
+	local x = camera.target.x
+	for _=1,30 do controls:step(1/60) end
+	check("flèche maintenue déplace en continu", camera.target.x > x)
+	inputs.InputEnded:Fire(key)
+	for _=1,60 do controls:step(1/60) end
+	x = camera.target.x
+	for _=1,60 do controls:step(1/60) end
+	check("relâcher une flèche termine le mouvement", near(x,camera.target.x,0.01))
+	inputs.InputBegan:Fire(key,false)
+	inputs.WindowFocusReleased:Fire()
+	x = camera.target.x
+	controls:step(0.05)
+	check("perte de focus annule les touches maintenues", camera.target.x == x)
+	local down = {UserInputType=Enum.UserInputType.MouseButton1,Position=Vector3.new(500,300,0)}
+	inputs.InputBegan:Fire(down,false)
+	inputs.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseMovement,Position=Vector3.new(600,300,0)},false)
+	inputs.InputEnded:Fire(down)
+	check("glisser la vue déplace la caméra et annule le double-clic", camera.target.x < x and controls.lastClick == nil)
+	local query = playerGui.GetGuiObjectsAtPosition
+	playerGui.GetGuiObjectsAtPosition = function() return {app.logPanel} end
+	x = camera.target.x
+	local distance = camera.distance
+	inputs.InputBegan:Fire(down,false)
+	inputs.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseMovement,Position=Vector3.new(700,300,0)},false)
+	inputs.InputChanged:Fire({UserInputType=Enum.UserInputType.MouseWheel,Position=Vector3.new(700,300,1)},false)
+	inputs.InputEnded:Fire(down)
+	check("journal sous la souris bloque glissement et zoom", camera.target.x == x and camera.distance == distance)
+	playerGui.GetGuiObjectsAtPosition = query
+	local host = Widgets.find(app.map.root,"Zone")
+	host.AbsolutePosition = Vector2.new(100,100)
+	host.AbsoluteSize = Vector2.new(200,200)
+	Widgets.find(app.map.root,"NaviguerCarte").MouseButton1Down:Fire(150,250)
+	check("clic dans le fond de carte recentre à la position choisie", near(camera.target.x,25) and near(camera.target.z,75))
+	local start = camera.display.x
+	camera:focus(90,50)
+	camera:step(1/60)
+	check("transition caméra progressive", camera.display.x > start and camera.display.x < 90)
+	for _=1,120 do camera:step(1/60) end
+	check("transition converge vers le point choisi", near(camera.display.x,90,0.001))
+	controls:unmount()
+end
 print(string.format("  Interface : %d réussite(s), %d échec(s)", passed, failed))
 if failed > 0 then
 	error(string.format("%d test(s) d'interface en échec", failed))

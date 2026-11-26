@@ -246,6 +246,10 @@ local DEFAULTS = {
 local InstanceMT = {}
 local methods = {}
 
+function methods:GetGuiObjectsAtPosition(_x, _y)
+	return {}
+end
+
 -- Double de la synthèse vocale ; mémorise les commandes de lecture.
 function methods:Play()
 	assert(self.ClassName == "AudioTextToSpeech")
@@ -515,6 +519,8 @@ local tweenService = {
 }
 
 local userInputService = {
+	GetFocusedTextBox = function() return nil end,
+	GetMouseLocation = function() return Vector2.new(500,300) end,
 	WindowFocusReleased = newSignal(),
 	InputBegan = newSignal(),
 	InputChanged = newSignal(),
