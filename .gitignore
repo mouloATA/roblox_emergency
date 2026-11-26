@@ -1,0 +1,20 @@
+# Builds Rojo
+build/
+*.rbxlx
+*.rbxl
+*.rbxlx.lock
+*.rbxl.lock
+
+# Outils / dépendances
+node_modules/
+*.log
+coverage.out
+profile.out
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Secrets locaux
+.env
+.env.*

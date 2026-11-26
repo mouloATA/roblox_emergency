@@ -1,0 +1,62 @@
+{
+  "name": "EmergencyResponseSimulator",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": { "$path": "src/ReplicatedStorage/Shared" },
+      "Remotes": { "$className": "Folder" }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "ERS": { "$path": "src/ServerScriptService" }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$properties": {
+        "CameraMaxZoomDistance": 500,
+        "CameraMinZoomDistance": 8,
+        "CharacterWalkSpeed": 18
+      },
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "ERSClient": { "$path": "src/StarterPlayer/StarterPlayerScripts" }
+      }
+    },
+
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "VehicleModels": { "$className": "Folder" },
+      "CharacterModels": { "$className": "Folder" },
+      "EquipmentModels": { "$className": "Folder" },
+      "MapAssets": { "$className": "Folder" }
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "FilteringEnabled": true,
+        "StreamingEnabled": false,
+        "Gravity": 196.2
+      }
+    },
+
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Ambient": [0.11, 0.12, 0.15],
+        "OutdoorAmbient": [0.07, 0.08, 0.1],
+        "Brightness": 1.1,
+        "ClockTime": 8.5,
+        "EnvironmentDiffuseScale": 0.4,
+        "EnvironmentSpecularScale": 0.4,
+        "ExposureCompensation": 0.15,
+        "GlobalShadows": true,
+        "ShadowSoftness": 0.5
+      }
+    }
+  }
+}
