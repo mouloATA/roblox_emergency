@@ -5,6 +5,11 @@ Le projet suit une version `MAJEUR.MINEUR.CORRECTIF`.
 
 ## [Non publié] — 2026-11-26
 
+### Rendu de la voirie
+
+- Les chaussées sont découpées aux carrefours et les trottoirs s’interrompent aux traversées. Les surfaces ne se superposent plus, supprimant une cause de scintillement lors des déplacements de caméra. Les bordures sont séparées en hauteur du revêtement des îlots.
+- Les tests vérifient l’absence de chevauchement et la couverture complète des chaussées après découpe. Le résultat visuel reste à confirmer dans Studio.
+
 ### Interface de la caserne
 
 - La vue se déplace par glissement du bouton gauche sur la ville et par maintien des flèches ou de WASD. Le mouvement, le zoom et le recentrage sont lissés à chaque image. Le fond de la carte permet de viser un point libre. Les panneaux du HUD interceptent glissement et molette, même après personnalisation.

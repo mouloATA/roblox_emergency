@@ -78,32 +78,49 @@ local function buildRoads(scene: any, plan: any, scale: number): ()
 	roads.Name = "Voirie"
 	roads.Parent = scene
 
-	for index, road in ipairs(plan.roads) do
-		if road.axis == "avenue" then
-			local size = Vector3.new(road.width * scale, 0.2, (road.z1 - road.z0) * scale)
-			local position = Vector3.new(road.x * scale, 0.12, (road.z0 + road.z1) / 2 * scale)
-			makePart(roads, "Avenue_" .. index, size, position, Color3.fromRGB(54, 55, 60), Enum.Material.Asphalt)
-		else
-			local size = Vector3.new((road.x1 - road.x0) * scale, 0.2, road.width * scale)
-			local position = Vector3.new((road.x0 + road.x1) / 2 * scale, 0.12, road.z * scale)
-			makePart(roads, "Rue_" .. index, size, position, Color3.fromRGB(54, 55, 60), Enum.Material.Asphalt)
+	-- Découpe les rubans aux carrefours : une seule face visible par zone.
+	local function ribbon(parent: any, name: string, strip: any, height: number, bottom: number, cuts: boolean, margin: number, color: Color3, material: Enum.Material)
+		local avenue = strip.axis == "avenue"
+		local first, last = avenue and strip.z0 or strip.x0, avenue and strip.z1 or strip.x1
+		local intervals = {}
+		if cuts then
+			for _, cross in ipairs(plan.roads) do
+				if (cross.axis == "avenue") ~= avenue then
+					local center = avenue and cross.z or cross.x
+					table.insert(intervals, {center - cross.width / 2 - margin, center + cross.width / 2 + margin})
+				end
+			end
 		end
+		table.sort(intervals, function(a, b) return a[1] < b[1] end)
+		local segment = 0
+		local function emit(start: number, finish: number)
+			if finish <= start then return end
+			segment += 1
+			local length, center = (finish - start) * scale, (start + finish) / 2 * scale
+			local size = avenue and Vector3.new(strip.width * scale, height, length) or Vector3.new(length, height, strip.width * scale)
+			local position = avenue and Vector3.new(strip.x * scale, bottom + height / 2, center)
+				or Vector3.new(center, bottom + height / 2, strip.z * scale)
+			makePart(parent, name .. "_" .. segment, size, position, color, material)
+		end
+		local cursor = first
+		for _, interval in ipairs(intervals) do
+			emit(cursor, math.min(last, interval[1]))
+			cursor = math.max(cursor, interval[2])
+		end
+		emit(cursor, last)
+	end
+	for index, road in ipairs(plan.roads) do
+		ribbon(roads, (road.axis == "avenue" and "Avenue_" or "Rue_") .. index,
+			road, 0.2, 0.02, road.axis ~= "avenue", 0, Color3.fromRGB(54, 55, 60), Enum.Material.Asphalt)
 	end
 
 	local sidewalks = Instance.new("Folder")
 	sidewalks.Name = "Trottoirs"
 	sidewalks.Parent = scene
 	for index, walk in ipairs(plan.sidewalks) do
-		local height = 0.22
-		if walk.axis == "avenue" then
-			local size = Vector3.new(walk.width * scale, height, (walk.z1 - walk.z0) * scale)
-			local position = Vector3.new(walk.x * scale, height / 2, (walk.z0 + walk.z1) / 2 * scale)
-			makePart(sidewalks, "Trottoir_" .. index, size, position, Color3.fromRGB(144, 142, 136), Enum.Material.Concrete)
-		else
-			local size = Vector3.new((walk.x1 - walk.x0) * scale, height, walk.width * scale)
-			local position = Vector3.new((walk.x0 + walk.x1) / 2 * scale, height / 2, walk.z * scale)
-			makePart(sidewalks, "Trottoir_" .. index, size, position, Color3.fromRGB(144, 142, 136), Enum.Material.Concrete)
-		end
+		-- Les avenues possèdent les coins ; les rues s'arrêtent avant ces coins.
+		ribbon(sidewalks, "Trottoir_" .. index, walk, 0.37, 0, true,
+			walk.axis == "avenue" and 0 or City.SIDEWALK, Color3.fromRGB(144, 142, 136), Enum.Material.Concrete)
 	end
 end
 

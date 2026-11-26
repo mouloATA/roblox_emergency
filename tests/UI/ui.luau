@@ -959,6 +959,30 @@ do
 	local workspace = game:GetService("Workspace")
 	local cityScene = require(Services:WaitForChild("SceneService")).build(Config, workspace)
 	local buildings = cityScene:FindFirstChild("Batiments")
+	-- Deux dalles qui occupent le même plan produisent du scintillement en mouvement.
+	local surfaces = {}
+	local roadArea = 0
+	for _, name in ipairs({"Voirie", "Trottoirs"}) do
+		for _, part in ipairs(cityScene:FindFirstChild(name):GetChildren()) do
+			table.insert(surfaces, part)
+			if name == "Voirie" then roadArea += part.Size.X * part.Size.Z end
+		end
+	end
+	local overlap = false
+	for i, a in ipairs(surfaces) do
+		for j = i + 1, #surfaces do
+			local b = surfaces[j]
+			if math.abs(a.Position.X - b.Position.X) < (a.Size.X + b.Size.X) / 2 - 0.001
+				and math.abs(a.Position.Z - b.Position.Z) < (a.Size.Z + b.Size.Z) / 2 - 0.001 then
+				overlap = true
+			end
+		end
+	end
+	check("chaussées et trottoirs sans surfaces superposées", not overlap)
+	local width = City.ROAD_HALF * 2
+	local expectedArea = ((#City.AVENUES + #City.STREETS) * City.WIDTH * width
+		- #City.AVENUES * #City.STREETS * width * width) * Config.WORLD_SCALE ^ 2
+	check("carrefours intégralement couverts après découpe", near(roadArea, expectedArea))
 	check("église et hôpital reconnaissables en 3D", buildings:FindFirstChild("Clocher") ~= nil
 		and buildings:FindFirstChild("ToitNef") ~= nil and buildings:FindFirstChild("AuventUrgences") ~= nil)
 	check("immeubles et caserne détaillés", buildings:FindFirstChild("Balcon") ~= nil
