@@ -61,7 +61,18 @@ local audio = AudioController.new({
 })
 audio:mount()
 
-local app = App.create(playerGui, {
+local preferences = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HudPreferences")
+local app
+app = App.create(playerGui, {
+	saveLayout = function(layout)
+		local copy = {}
+		for id, settings in pairs(layout) do copy[id] = table.clone(settings) end
+		task.spawn(function()
+			local ok, result = pcall(function() return preferences:InvokeServer(copy) end)
+			if not ok or not result.ok then app.editor.dirty = true end
+			controller:toast(ok and result.message or "Sauvegarde du HUD inaccessible. Verrouillez à nouveau pour réessayer.", ok and result.ok)
+		end)
+	end,
 	controller = controller,
 	player = player,
 	camera = camera,
@@ -89,4 +100,9 @@ input:mount()
 controller:render()
 task.spawn(function()
 	network:requestSnapshot()
+	local ok, result = pcall(function() return preferences:InvokeServer() end)
+	if ok and result.ok and not app.editor.touched and not app.editor.editing then
+		app.editor.layout = result.layout
+		controller:render()
+	end
 end)

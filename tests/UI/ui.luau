@@ -1405,6 +1405,7 @@ do
 	controller:closeDrawer()
 	app.gui.AbsoluteSize = Vector2.new(1904, 900)
 	controller:render()
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
 	local inputs = game:GetService("UserInputService")
 	local function drag(panel, dx, dy)
 		local input = {UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(500,500,0)}
@@ -1425,6 +1426,50 @@ do
 	local size = app.logPanel.Size.Y.Offset
 	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(1,1,0)})
 	check("relâcher la souris termine le redimensionnement", app.logPanel.Size.Y.Offset == size)
+end
+do
+	local inputs = game:GetService("UserInputService")
+	local entry = app.editor.entries.journal
+	local down = { UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(400,400,0) }
+	entry.overlay:FindFirstChild("Deplacer").InputBegan:Fire(down)
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(500,300,0)})
+	inputs.InputEnded:Fire(down)
+	check("déplacement enregistré pour le journal", app.editor.layout.journal ~= nil)
+	local x = app.logPanel.Position.X.Offset
+	controller:render()
+	check("position personnalisée conservée au rendu", app.logPanel.Position.X.Offset == x)
+	entry.overlay:FindFirstChild("Taille").InputBegan:Fire(down)
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(490,440,0)})
+	inputs.InputEnded:Fire(down)
+	check("échelle du panneau modifiée avec la poignée", app.editor.layout.journal.scale > 1)
+	app.gui.AbsoluteSize = Vector2.new(812,600)
+	controller:render()
+	check("panneau personnalisé contenu après réduction de la fenêtre",
+		app.logPanel.Position.X.Offset + entry.w <= app.editor.width + 0.01
+		and app.logPanel.Position.Y.Offset + entry.h <= app.editor.height + 0.01)
+	app.gui.AbsoluteSize = Vector2.new(1904,900)
+	controller:render()
+	x = app.logPanel.Position.X.Offset
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
+	check("cadenas masque les poignées", not entry.overlay.Visible and not Widgets.find(app.logPanel,"Redimensionner").Visible)
+	entry.overlay:FindFirstChild("Deplacer").InputBegan:Fire(down)
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(1000,900,0)})
+	check("cadenas interdit les déplacements", app.logPanel.Position.X.Offset == x)
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
+	click(Widgets.find(app.topBar, "ReinitialiserHUD"))
+	check("réinitialisation de la disposition", next(app.editor.layout) == nil and app.map.root.Size.X.Offset == Theme.sizes.minimapWidth)
+	click(Widgets.find(app.topBar, "PersonnaliserHUD"))
+	local service = require(game:GetService("ServerScriptService"):WaitForChild("ERS"):WaitForChild("Services"):WaitForChild("HudPreferenceService"))
+	local saved = {}
+	local store = { GetAsync = function(_,key) return saved[key] end, SetAsync = function(_,key,value) saved[key] = value end }
+	local handle = service.new(store)
+	local layout = { journal = {x=0.2,y=0.4,scale=0.8} }
+	check("préférence sauvegardée sous le joueur authentifié", handle({UserId=123},layout).persistent and saved["123"].journal.x==0.2)
+	check("préférence restaurée dans une nouvelle session", service.new(store)({UserId=123},nil).layout.journal.scale==0.8)
+	check("préférences isolées par joueur", next(handle({UserId=124},nil).layout)==nil)
+	check("coordonnées invalides refusées", not handle({UserId=125},{journal={x=math.huge,y=0,scale=1}}).ok)
+	check("panneaux inconnus refusés", service.validate({alien={x=0,y=0,scale=1}})==nil)
+	check("repli local explicite sans DataStore", service.new(nil)({UserId=126},layout).persistent==false)
 end
 print(string.format("  Interface : %d réussite(s), %d échec(s)", passed, failed))
 if failed > 0 then

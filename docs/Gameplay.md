@@ -287,6 +287,8 @@ associé et braque la caméra sur sa position.
 
 ## 14. Commandes
 
+Le cadenas **HUD** ouvre la personnalisation. Faites glisser un panneau visible pour le déplacer, puis sa poignée diagonale pour ajuster son échelle. Carte, journal, navigation, radio, barre de commandes, fiche ouverte et notifications disposent de leurs propres réglages. La barre de commandes se déplace en un seul bloc. **Verrouiller** termine les réglages et les enregistre pour le joueur. **Réinitialiser** retrouve la disposition automatique. En Studio, si le DataStore est inaccessible, un message précise que la disposition reste disponible uniquement pendant la session.
+
 Voir [README.md](README.md#commandes-en-jeu). Les raccourcis ne modifient que
 l'état local ou envoient une intention déjà autorisée ; `S` est refusé côté
 client **et** côté serveur pour un poste sans droit de sauvegarde.

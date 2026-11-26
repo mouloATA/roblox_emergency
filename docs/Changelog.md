@@ -7,6 +7,7 @@ Le projet suit une version `MAJEUR.MINEUR.CORRECTIF`.
 
 ### Interface de la caserne
 
+- Le bouton cadenas HUD ouvre la personnalisation des panneaux visibles. Le joueur les déplace et ajuste leur échelle, puis verrouille les commandes. Réinitialiser retrouve la disposition automatique. Les préférences sont validées et enregistrées par joueur, avec un repli explicite en mémoire quand le DataStore est inaccessible.
 - La carte tactique se redimensionne par sa poignée inférieure gauche et le journal par sa poignée supérieure droite, à la souris ou au toucher. Les dimensions choisies restent actives pendant la session et sont limitées à l’espace disponible.
 - La barre ERS occupe la zone libre à droite des bulles Roblox, sur la même ligne. Sa largeur suit automatiquement les commandes natives et les dimensions de la fenêtre.
 - Tous les panneaux s’ouvrent à droite du menu latéral, y compris la flotte ouverte depuis les moyens disponibles. Dans une fenêtre étroite, les fiches larges défilent horizontalement et les boutons de navigation restent accessibles.

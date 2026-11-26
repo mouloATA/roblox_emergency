@@ -34,6 +34,7 @@ local BudgetPanel = require(UI:WaitForChild("BudgetPanel"))
 local MultiplayerPanel = require(UI:WaitForChild("MultiplayerPanel"))
 local MissionPanel = require(UI:WaitForChild("MissionPanel"))
 local MainMenu = require(UI:WaitForChild("MainMenu"))
+local HudEditor = require(UI:WaitForChild("HudEditor"))
 
 local App = {}
 
@@ -183,8 +184,8 @@ function App.create(parent: any, context: any): any
 		brandName.Visible = not compact
 		city.Visible = not compact
 		status.Position = UDim2.new(0, compact and 64 or 278, 0.5, 0)
-		status.Size = UDim2.new(1, compact and -264 or -478, 0, 22)
-		status.Visible = width >= 380
+		status.Size = UDim2.new(1, compact and -410 or -624, 0, 22)
+		status.Visible = width >= 540
 	end
 	topGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(resizeTopbar)
 	resizeTopbar()
@@ -425,17 +426,41 @@ function App.create(parent: any, context: any): any
 
 	local mapWidth: number? = nil
 	local journalSize: any = nil
+	local editor = HudEditor.new(root, {
+		map = map.root, journal = logPanel, navigation = tabColumn, radio = radioPanel,
+		commands = bottom.root, panel = drawer, notifications = toastsRoot,
+	}, controller)
+	local saveLayout = context.saveLayout
+	local lock
+	local reset = Widgets.button(topBar, "ReinitialiserHUD", "Réinitialiser", function()
+		mapWidth, journalSize = nil, nil
+		editor:reset()
+	end, { Position = UDim2.new(1, -424, 0, 7), Size = UDim2.fromOffset(108,30), Visible = false })
+	lock = Widgets.button(topBar, "PersonnaliserHUD", "🔒 HUD", function()
+		editor.touched = true
+		editor.editing = not editor.editing
+		lock.Text = editor.editing and "🔓 Verrouiller" or "🔒 HUD"
+		reset.Visible = editor.editing
+		controller:render()
+		if not editor.editing and editor.dirty and saveLayout then
+			saveLayout(editor.layout)
+			editor.dirty = false
+		end
+	end, { Position = UDim2.new(1, -308, 0, 7), Size = UDim2.fromOffset(112,30) })
 	Widgets.resizeHandle(map.root, UDim2.new(0, 8, 1, -2), Vector2.new(0, 1), Vector2.new(-1, 1),
 		function() return hudScale.Scale end, function(width, _height)
+			if not editor.editing then return end
 			mapWidth = width
 			controller:render()
 		end)
 	Widgets.resizeHandle(logPanel, UDim2.new(1, 0, 0, 0), Vector2.new(1, 0), Vector2.new(1, -1),
 		function() return hudScale.Scale end, function(width, height)
+			if not editor.editing then return end
 			journalSize = Vector2.new(width, height)
 			controller:render()
 		end)
 	local app = {
+		editor = editor,
 		gui = gui,
 		topGui = topGui,
 		root = root,
@@ -472,6 +497,7 @@ function App.create(parent: any, context: any): any
 	end
 
 	function app:render(state: any, snapshot: any)
+		editor:restore()
 		local vehicles = snapshot.vehicles or {}
 		local alerts = snapshot.alerts or 0
 		local me = nil
@@ -624,6 +650,14 @@ function App.create(parent: any, context: any): any
 				self.audio:play(latest.ok and "confirm" or "error")
 				self.lastToastId = latest.id or self.lastToastId
 			end
+		end
+		local size = gui.AbsoluteSize
+		resizeTopbar()
+		if editor.editing then
+			status.Visible, brandName.Visible, city.Visible = false, false, false
+		end
+		if size.X > 0 and size.Y > 0 then
+			editor:apply(size.X / hudScale.Scale, size.Y / hudScale.Scale, hudScale.Scale)
 		end
 	end
 

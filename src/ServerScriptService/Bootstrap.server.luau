@@ -69,6 +69,7 @@ end
 -- ─────────────────────────────────────────────────────────────
 local remotes = NetworkService.createRemotes(ReplicatedStorage)
 local network = NetworkService.mount(world, remotes)
+require(Services:WaitForChild("HudPreferenceService")).mount(remotes.folder)
 
 -- Les joueurs déjà présents au moment du montage (Studio / hot reload).
 for _, player in ipairs(Players:GetPlayers()) do
