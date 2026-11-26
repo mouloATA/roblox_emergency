@@ -14,48 +14,62 @@ local UI = game:GetService("Players").LocalPlayer:WaitForChild("PlayerScripts"):
 local Theme = require(UI:WaitForChild("Theme"))
 local Widgets = require(UI:WaitForChild("Widgets"))
 
+local Nav = require(UI:WaitForChild("ManagementNav"))
+local Catalogs = Shared:WaitForChild("Catalogs")
+local Equipment = require(Catalogs:WaitForChild("Equipment"))
+local Vehicles = require(Catalogs:WaitForChild("Vehicles"))
 local EquipmentPanel = {}
+local families = {
+	{ "all", "Tout", 60 }, { "fire", "Incendie", 84 }, { "rescue", "Sauvetage", 96 },
+	{ "medical", "Médical", 78 }, { "support", "Appui", 68 }, { "security", "Sécurité", 84 },
+}
+local familyOf = {
+	protection = "fire", extinction = "fire", extrication = "rescue", rescue = "rescue", medical = "medical",
+	recon = "support", radio = "support", command = "support", logistics = "support", intervention = "security",
+}
 
+-- Relie le magasin, le chargement et le choix de l’engin à la sélection tactique.
 function EquipmentPanel.create(parent: any, context: any): any
 	local controller = context.controller
 
 	local root = Widgets.frame(parent, "PanneauMateriel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	Widgets.padding(root, 10, 2)
 
-	local title = Widgets.label(root, "Titre", "MATÉRIEL", {
-		Size = UDim2.new(1, 0, 0, 24),
-		TextSize = Theme.text.subtitle,
-		Font = Theme.fonts.bold,
+	local pages
+	local previous = "stock"
+	local body = Widgets.frame(root, "Inventaire", {
+		BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 88), Size = UDim2.new(1, 0, 1, -88),
 	})
-	local subtitle = Widgets.label(root, "SousTitre", "", {
-		Position = UDim2.fromOffset(0, 24),
-		Size = UDim2.new(1, 0, 0, 18),
-		TextSize = Theme.text.tiny,
-		TextColor3 = Theme.colors.textMuted,
-	})
-
+	local stockList = Widgets.scroller(body, "Stock", { Size = UDim2.fromScale(1, 1) })
+	local installedList = Widgets.scroller(body, "Installe", { Size = UDim2.fromScale(1, 1) })
+	local fleet = Widgets.scroller(body, "Engins", { Size = UDim2.fromScale(1, 1) })
+	local familiesNav = Nav.strip(root, "FamilleMateriel", families, function()
+		stockList.CanvasPosition = Vector2.new(0, 0)
+		controller:render()
+	end, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, 36) })
+	pages = Nav.strip(root, "VueMateriel", { { "stock", "Stock", 68 }, { "loaded", "À bord", 72 }, { "fleet", "Choisir l’engin", 116 } },
+		function(id)
+			if id ~= "fleet" then previous = id end
+			controller:render()
+		end, { Size = UDim2.new(1, 0, 0, 38) })
 	local target = Widgets.label(root, "Cible", "", {
-		Position = UDim2.fromOffset(0, 42),
-		Size = UDim2.new(1, 0, 0, 18),
-		TextSize = Theme.text.tiny,
-		TextColor3 = Theme.colors.info,
+		Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, -6, 0, 32),
+		TextSize = Theme.text.small, TextColor3 = Theme.colors.textDim,
 	})
-
-	local listTitle = Widgets.section(root, "Stock disponible")
-	listTitle.Position = UDim2.fromOffset(0, 62)
-
-	local stockList = Widgets.scroller(root, "Stock", {
-		Position = UDim2.fromOffset(0, 84),
-		Size = UDim2.new(1, 0, 0.47, 4),
+	local empty = Widgets.label(body, "Vide", "", {
+		Size = UDim2.new(1, -8, 0, 38), TextColor3 = Theme.colors.textMuted, TextSize = Theme.text.small,
 	})
-
-	local installedTitle = Widgets.section(root, "Matériel de l'engin sélectionné")
-	installedTitle.Position = UDim2.new(0, 0, 0.47, 88)
-
-	local installedList = Widgets.scroller(root, "Installe", {
-		Position = UDim2.new(0, 0, 0.47, 110),
-		Size = UDim2.new(1, 0, 0.53, -120),
-	})
+	local fleetRows = Widgets.list(fleet, function(vehicle) return vehicle.id end, function(vehicle)
+		local button = Widgets.button(fleet, "Choisir_" .. vehicle.id, "", function()
+			controller:select("vehicle", vehicle.id)
+			pages.select(previous)
+		end, { Size = UDim2.new(1, -6, 0, 40) })
+		return { instance = button }
+	end, function(entry, vehicle)
+		entry.instance.Text = vehicle.callsign .. "  ·  " .. vehicle.name .. "  ·  " .. Theme.statusLabel(vehicle.status)
+		Widgets.setSelected(entry.instance, controller.state.vehicleId == vehicle.id)
+	end)
+	local payload = { units = 0, weight = 0 }
 
 	local stockRows = Widgets.list(stockList, function(entry)
 		return entry.id
@@ -63,16 +77,16 @@ function EquipmentPanel.create(parent: any, context: any): any
 		local row = Widgets.frame(stockList, "Stock_" .. entry.id, {
 			BackgroundColor3 = Theme.colors.surfaceAlt,
 			BackgroundTransparency = 0.4,
-			Size = UDim2.new(1, 0, 0, 34),
+			Size = UDim2.new(1, -6, 0, 42),
 		})
 		Widgets.corner(row, Theme.radius.small)
 		local name = Widgets.label(row, "Nom", entry.name, {
 			Position = UDim2.fromOffset(8, 2),
-			Size = UDim2.new(1, -100, 0, 16),
+			Size = UDim2.new(1, -148, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd,
 			TextSize = Theme.text.tiny,
 		})
 		local quantity = Widgets.label(row, "Quantite", "", {
-			Position = UDim2.fromOffset(8, 16),
+			Position = UDim2.fromOffset(8, 22),
 			Size = UDim2.new(0, 80, 0, 14),
 			TextSize = 10,
 			TextColor3 = Theme.colors.textMuted,
@@ -85,21 +99,25 @@ function EquipmentPanel.create(parent: any, context: any): any
 					equipmentId = entry.id,
 					quantity = 1,
 				})
+			else
+				pages.select("fleet")
 			end
-		end, { Size = UDim2.fromOffset(66, 24), Position = UDim2.new(1, -72, 0, 5), TextSize = 10 })
+		end, { Size = UDim2.fromOffset(122, 30), Position = UDim2.new(1, -130, 0, 5), TextSize = Theme.text.tiny })
 		return { instance = row, name = name, quantity = quantity, install = install }
 	end, function(entryView, entry)
 		entryView.name.Text = entry.name
 		entryView.quantity.Text = "En stock : " .. entry.quantity
 		local vehicle = controller:selectedVehicle()
-		Widgets.setEnabled(
-			entryView.install,
-			vehicle ~= nil
-				and entry.quantity > 0
-				and vehicle.status == Constants.VEHICLE_STATUS.AVAILABLE
-				and controller:can("equipment")
-				and controller:canService(vehicle.service)
-		)
+		local def = Equipment.get(entry.id)
+		local typeDef = vehicle and Vehicles.get(vehicle.typeId)
+		local reason = nil
+		if not vehicle then reason = "Choisir l’engin"
+		elseif not typeDef or not def or not table.find(def.services, typeDef.service) then reason = "Incompatible"
+		elseif vehicle.status ~= Constants.VEHICLE_STATUS.AVAILABLE then reason = "En mission"
+		elseif not controller:can("equipment") or not controller:canService(vehicle.service) then reason = "Poste restreint"
+		elseif entry.quantity <= 0 or payload.units >= typeDef.equipmentSlots or payload.weight + def.weight > typeDef.capacity then reason = "Capacité atteinte" end
+		entryView.install.Text = reason or "Installer"
+		Widgets.setEnabled(entryView.install, reason == nil or vehicle == nil)
 	end)
 
 	local installedRows = Widgets.list(installedList, function(entry)
@@ -145,20 +163,45 @@ function EquipmentPanel.create(parent: any, context: any): any
 	end)
 
 	local function update(snapshot: any, _state: any)
-		stockRows.update(snapshot.stock or {})
+		local mode = pages.value
 		local vehicle = controller:selectedVehicle()
-		if vehicle then
-			target.Text = string.format("Destination : %s (%d emplacements)", vehicle.callsign, #vehicle.equipment)
-			installedRows.update(vehicle.equipment or {})
+		local typeDef = vehicle and Vehicles.get(vehicle.typeId)
+		fleet.Visible = mode == "fleet"
+		stockList.Visible = mode == "stock"
+		installedList.Visible = mode == "loaded"
+		familiesNav.root.Visible = mode == "stock"
+		target.Visible = mode ~= "stock"
+		pages.buttons.fleet.Text = vehicle and (vehicle.callsign .. "  ▾") or "Choisir l’engin"
+		payload.units, payload.weight = 0, 0
+		for _, entry in ipairs(vehicle and vehicle.equipment or {}) do
+			local def = Equipment.get(entry.id)
+			payload.units += entry.quantity
+			payload.weight += (def and def.weight or 0) * entry.quantity
+		end
+		local entries
+		if mode == "fleet" then
+			target.Text = "Choisissez la destination du matériel."
+			entries = snapshot.vehicles or {}
+			fleetRows.update(entries)
+			empty.Text = "Aucun engin dans la flotte."
+		elseif mode == "loaded" then
+			target.Text = typeDef and string.format("%s  ·  %d/%d emplacements  ·  %d/%d kg", vehicle.callsign,
+				payload.units, typeDef.equipmentSlots, payload.weight, typeDef.capacity) or "Choisissez un engin pour voir son chargement."
+			entries = vehicle and vehicle.equipment or {}
+			installedRows.update(entries)
+			empty.Text = vehicle and "Aucun matériel à bord." or ""
 		else
-			target.Text = "Sélectionnez un véhicule au poste pour charger du matériel."
-			installedRows.update({})
+			entries = {}
+			for _, entry in ipairs(snapshot.stock or {}) do
+				local def = Equipment.get(entry.id)
+				if familiesNav.value == "all" or (def and familyOf[def.category] == familiesNav.value) then
+					table.insert(entries, entry)
+				end
+			end
+			stockRows.update(entries)
+			empty.Text = "Aucun matériel en stock dans cette famille."
 		end
-		local total = 0
-		for _, entry in ipairs(snapshot.stock or {}) do
-			total += entry.quantity
-		end
-		subtitle.Text = string.format("%d référence(s) · %d unité(s) en stock", #(snapshot.stock or {}), total)
+		empty.Visible = #entries == 0
 	end
 
 	return { root = root, update = update, stock = stockRows }

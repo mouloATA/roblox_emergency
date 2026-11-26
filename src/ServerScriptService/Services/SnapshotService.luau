@@ -189,6 +189,7 @@ function SnapshotService.build(world: any): any
 			level = person.level or 0,
 			transferValue = Recruitment.transferValue(person),
 			qualifications = qualificationLabels(world, person),
+			qualificationIds = copyTable(person.qualifications),
 		})
 	end
 

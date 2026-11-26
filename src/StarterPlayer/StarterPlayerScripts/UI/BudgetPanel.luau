@@ -1,231 +1,120 @@
 --!strict
---[[
-	BudgetPanel — budget, achats de véhicules et sauvegarde.
-
-	Le panneau n'écrit jamais le budget : il affiche le solde du snapshot et
-	envoie une intention `buy_vehicle` ou `save`. Le serveur vérifie le droit,
-	le prix et le plafond de flotte, puis débite réellement le budget.
-]]
-
+-- Catalogue des véhicules et relevé des finances de la garde.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Constants = require(Shared:WaitForChild("Constants"))
-local Catalogs = Shared:WaitForChild("Catalogs")
-local Vehicles = require(Catalogs:WaitForChild("Vehicles"))
+local Vehicles = require(Shared:WaitForChild("Catalogs"):WaitForChild("Vehicles"))
 
 local UI = game:GetService("Players").LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("ERSClient"):WaitForChild("UI")
 local Theme = require(UI:WaitForChild("Theme"))
 local Widgets = require(UI:WaitForChild("Widgets"))
-
+local Nav = require(UI:WaitForChild("ManagementNav"))
 local BudgetPanel = {}
 
-local function kindColor(kind: string): any
-	if kind == Constants.LOG.SUCCESS then
-		return Theme.colors.success
-	elseif kind == Constants.LOG.FAILURE then
-		return Theme.colors.danger
-	elseif kind == Constants.LOG.MONEY then
-		return Theme.colors.warning
-	end
-	return Theme.colors.textDim
-end
-
+-- Ouvre les achats par service et garde le solde visible pendant la consultation.
 function BudgetPanel.create(parent: any, context: any): any
 	local controller = context.controller
-	local latestSnapshot = context.snapshot or { vehicles = {}, log = {}, budget = 0 }
-
-	local root = Widgets.frame(parent, "PanneauBudget", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-	})
+	local root = Widgets.frame(parent, "PanneauBudget", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	Widgets.padding(root, 10, 2)
-
-	local title = Widgets.label(root, "Titre", "BUDGET", {
-		Size = UDim2.new(1, 0, 0, 24),
-		TextSize = Theme.text.subtitle,
-		Font = Theme.fonts.bold,
+	local catalogue = Widgets.scroller(root, "Catalogue", {
+		Position = UDim2.fromOffset(0, 120), Size = UDim2.new(1, 0, 1, -120),
 	})
-	local balance = Widgets.label(root, "Solde", "—", {
-		Position = UDim2.fromOffset(0, 24),
-		Size = UDim2.new(1, 0, 0, 34),
-		TextSize = 28,
-		Font = Theme.fonts.bold,
-		TextColor3 = Theme.colors.success,
+	local pages = Nav.strip(root, "VueBudget", { { "shop", "Acheter un engin", 144 }, { "ledger", "Finances", 86 } },
+		function() controller:render() end, { Size = UDim2.new(1, -124, 0, 38) })
+	local balance = Widgets.label(root, "Solde", "", {
+		Position = UDim2.new(1, -120, 0, 0), Size = UDim2.fromOffset(120, 34), Font = Theme.fonts.bold,
+		TextSize = Theme.text.subtitle, TextColor3 = Theme.colors.success, TextXAlignment = Enum.TextXAlignment.Right,
 	})
+	local categories = Nav.strip(root, "ServiceAchat", Nav.services, function()
+		catalogue.CanvasPosition = Vector2.new(0, 0)
+		controller:render()
+	end, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, 36) })
 	local summary = Widgets.label(root, "Resume", "", {
-		Position = UDim2.fromOffset(0, 56),
-		Size = UDim2.new(1, 0, 0, 18),
-		TextSize = Theme.text.tiny,
-		TextColor3 = Theme.colors.textMuted,
+		Position = UDim2.fromOffset(0, 82), Size = UDim2.new(1, -145, 0, 34), TextSize = Theme.text.small,
+		TextColor3 = Theme.colors.textDim, TextWrapped = true,
 	})
-
-	-- Le corps défile : catalogue et opérations dépassent la hauteur du
-	-- tiroir, qui reste aligné sur la barre inférieure.
-	local body = Widgets.scroller(root, "Corps", {
-		Position = UDim2.fromOffset(0, 78),
-		Size = UDim2.new(1, 0, 1, -78),
-	})
-
-	local turnLabel = Widgets.label(body, "TourAchat", "", {
-		Size = UDim2.new(1, 0, 0, 22), TextSize = Theme.text.small,
-	})
-	local passButton = Widgets.button(body, "Action_pass_purchase_turn", "Passer mon tour", function()
+	local pass = Widgets.button(root, "Action_pass_purchase_turn", "Passer mon tour", function()
 		controller:command("pass_purchase_turn", nil)
-	end, { Size = UDim2.new(1, 0, 0, 30) })
-
-	Widgets.section(body, "Achat de véhicule")
-
-	local buyList = Widgets.scroller(body, "Catalogue", {
-		Size = UDim2.new(1, 0, 0, 300),
+	end, { Position = UDim2.new(1, -136, 0, 82), Size = UDim2.fromOffset(136, 32) })
+	local ledger = Widgets.scroller(root, "Corps", { Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 1, -46) })
+	local totals = Widgets.label(ledger, "Totaux", "", {
+		Size = UDim2.new(1, -8, 0, 30), Font = Theme.fonts.bold, TextSize = Theme.text.body, LayoutOrder = 0,
 	})
-	local buyButtons = {}
-
-	local buyRows = Widgets.list(buyList, function(def)
-		return def.id
-	end, function(def)
-		local row = Widgets.frame(buyList, "Achat_" .. def.id, {
-			BackgroundColor3 = Theme.colors.surfaceAlt,
-			BackgroundTransparency = 0.4,
-			Size = UDim2.new(1, 0, 0, 48),
-		})
-		Widgets.corner(row, Theme.radius.small)
-		local service = Widgets.frame(row, "Service", {
-			BackgroundColor3 = Theme.serviceColor[def.service] or Theme.colors.info,
-			Size = UDim2.fromOffset(3, 40),
-			Position = UDim2.fromOffset(0, 4),
-		})
-		Widgets.corner(service, 2)
-		local name = Widgets.label(row, "Nom", def.name, {
-			Position = UDim2.fromOffset(10, 3),
-			Size = UDim2.new(1, -112, 0, 17),
-			TextSize = Theme.text.tiny,
-			Font = Theme.fonts.bold,
-		})
-		local meta = Widgets.label(row, "Meta", "", {
-			Position = UDim2.fromOffset(10, 21),
-			Size = UDim2.new(1, -112, 0, 14),
-			TextSize = 9,
-			TextColor3 = Theme.colors.textMuted,
-		})
-		local cost = Widgets.label(row, "Cout", Theme.money(def.cost), {
-			Position = UDim2.fromOffset(10, 34),
-			Size = UDim2.new(0, 90, 0, 12),
-			TextSize = 9,
-			TextColor3 = Theme.colors.warning,
-		})
-		local buy = Widgets.button(row, "Action_buy_" .. def.id, "Acheter", function()
-			controller:command("buy_vehicle", { typeId = def.id })
-		end, { Size = UDim2.fromOffset(74, 24), Position = UDim2.new(1, -82, 0, 12), TextSize = 10 })
-		buyButtons[def.id] = buy
-		return { instance = row, name = name, meta = meta, cost = cost, buy = buy }
-	end, function(entry, def)
-		entry.name.Text = def.name
-		entry.meta.Text = string.format(
-			"%s · %d place(s) · %d opérateur(s) requis",
-			Theme.serviceLabel(def.service),
-			def.seats,
-			def.crewRequired
-		)
-		local snapshot = latestSnapshot
-		local turn = snapshot.purchase or {}
-		local cost = def.cost + (turn.surcharge or 0)
-		entry.cost.Text = Theme.money(cost)
-		local affordable = (snapshot.budget or 0) >= cost
-		local myTurn = turn.owner == nil or turn.owner == controller.player.UserId
-		local underCap = #(snapshot.vehicles or {}) < Config.MAX_FLEET
-		Widgets.setEnabled(entry.buy, controller:can("buy_vehicle") and affordable and underCap and myTurn)
-		entry.buy.Text = affordable and "Acheter" or "Fonds"
-	end)
-
-	Widgets.section(body, "Dernières opérations")
-
-	local moneyList = Widgets.scroller(body, "Operations", {
-		Size = UDim2.new(1, 0, 0, 120),
-	})
-	local moneyRows = Widgets.list(moneyList, function(entry)
-		return entry.id or (entry.clock .. "|" .. entry.message)
-	end, function(entry)
-		local row = Widgets.frame(moneyList, "Operation_" .. tostring(entry.id or 0), {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 26),
-		})
-		local clock = Widgets.label(row, "Heure", entry.clock or "", {
-			Size = UDim2.fromOffset(44, 26),
-			TextSize = 9,
-			Font = Theme.fonts.mono,
-			TextColor3 = Theme.colors.textMuted,
-		})
-		local message = Widgets.label(row, "Message", entry.message, {
-			Position = UDim2.fromOffset(46, 0),
-			Size = UDim2.new(1, -48, 0, 26),
-			TextSize = 9,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-			TextColor3 = kindColor(entry.kind),
-		})
-		return { instance = row, clock = clock, message = message }
-	end, function(entryView, entry)
-		entryView.clock.Text = entry.clock or ""
-		entryView.message.Text = entry.message or ""
-		entryView.message.TextColor3 = kindColor(entry.kind)
-	end)
-
-	local footer = Widgets.horizontal(body, "Pied", {
-		Size = UDim2.new(1, 0, 0, 34),
-		BackgroundTransparency = 1,
-	})
-	local saveButton = Widgets.button(footer, "Action_save", "Sauvegarder", function()
+	local saveButton = Widgets.button(ledger, "Action_save", "Sauvegarder la garde", function()
 		controller:command("save", nil)
-	end, { Size = UDim2.fromOffset(126, 32), TextSize = Theme.text.tiny })
-	local footerHint = Widgets.label(footer, "Aide", "Sauvegarde serveur (DataStore ou mémoire).", {
-		Size = UDim2.new(1, -132, 1, 0),
-		TextSize = 9,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = Theme.colors.textMuted,
+	end, { Size = UDim2.fromOffset(186, 32), LayoutOrder = 1 })
+	Widgets.section(ledger, "Dernières opérations").LayoutOrder = 2
+	local empty = Widgets.label(ledger, "AucuneOperation", "Aucune opération enregistrée.", {
+		Size = UDim2.new(1, -8, 0, 28), TextColor3 = Theme.colors.textMuted, LayoutOrder = 3,
 	})
+	local moneyRows = Widgets.list(ledger, function(event)
+		return event.id or (event.clock .. "|" .. event.message)
+	end, function(event)
+		local line = Widgets.label(ledger, "Operation_" .. tostring(event.id or 0), "", {
+			Size = UDim2.new(1, -8, 0, 32), TextSize = Theme.text.small, TextWrapped = true,
+		})
+		return { instance = line }
+	end, function(entry, event, index)
+		entry.instance.Text = (event.clock or "") .. "   " .. (event.message or "")
+		entry.instance.LayoutOrder = index + 3
+	end)
+
+	local latest = context.snapshot or {}
+	local rows = Widgets.list(catalogue, function(def) return def.id end, function(def)
+		local detail = string.format("%s  ·  %d places  ·  Équipage requis %d", Theme.serviceLabel(def.service), def.seats, def.crewRequired)
+		return Nav.offer(catalogue, "Achat_" .. def.id, "Action_buy_" .. def.id, def.id .. "  ·  " .. def.name,
+			detail, def.service, "Acheter", function() controller:command("buy_vehicle", { typeId = def.id }) end)
+	end, function(entry, def)
+		local turn = latest.purchase or {}
+		local price = def.cost + (turn.surcharge or 0)
+		local reason = nil
+		if not controller:can("buy_vehicle") then reason = "Poste restreint"
+		elseif turn.owner ~= nil and turn.owner ~= controller.player.UserId then reason = "Hors tour"
+		elseif #(latest.vehicles or {}) >= Config.MAX_FLEET then reason = "Flotte pleine"
+		elseif (latest.budget or 0) < price then reason = "Solde insuffisant" end
+		entry.cost.Text = Theme.money(price)
+		entry.buy.Text = reason or "Acheter"
+		Widgets.setEnabled(entry.buy, reason == nil)
+	end)
 
 	local function update(snapshot: any, _state: any)
-		latestSnapshot = snapshot
+		latest = snapshot
+		local shopping = pages.value == "shop"
 		local turn = snapshot.purchase or {}
 		local multiple = (turn.count or 0) > 1
-		turnLabel.Text = (multiple and string.format("Achats de %s · %d s", turn.name, turn.remaining) or "Achats de garde")
-			.. " · majoration " .. Theme.money(turn.surcharge or 0)
-		passButton.Visible = multiple
-		Widgets.setEnabled(passButton, multiple and turn.owner == controller.player.UserId)
-		buyRows.update(Vehicles.list)
 		balance.Text = Theme.money(snapshot.budget or 0)
 		balance.TextColor3 = (snapshot.budget or 0) >= 0 and Theme.colors.success or Theme.colors.danger
-		summary.Text = string.format(
-			"Dépensé %s · encaissé %s · %d véhicule(s)/%d",
-			Theme.money(snapshot.spent or 0),
-			Theme.money(snapshot.earned or 0),
-			#(snapshot.vehicles or {}),
-			Config.MAX_FLEET
-		)
-
-		local money = {}
-		for _, entry in ipairs(snapshot.log or {}) do
-			if entry.kind == Constants.LOG.MONEY then
-				table.insert(money, entry)
-				if #money >= 6 then
-					break
-				end
+		categories.root.Visible = shopping
+		summary.Visible = shopping
+		catalogue.Visible = shopping
+		ledger.Visible = not shopping
+		pass.Visible = shopping and multiple
+		Widgets.setEnabled(pass, multiple and turn.owner == controller.player.UserId)
+		if shopping then
+			local offers = Nav.byService(Vehicles.list, categories.value)
+			summary.Size = UDim2.new(1, multiple and -145 or 0, 0, 34)
+			summary.Text = string.format("%d modèles  ·  Flotte %d/%d", #offers, #(snapshot.vehicles or {}), Config.MAX_FLEET)
+			if multiple then summary.Text ..= string.format("  ·  Tour de %s (%d s)", turn.name, turn.remaining) end
+			if (turn.surcharge or 0) > 0 then summary.Text ..= "  ·  Majoration " .. Theme.money(turn.surcharge) end
+			rows.update(offers)
+		else
+			totals.Text = "Dépenses  " .. Theme.money(snapshot.spent or 0) .. "     Recettes  " .. Theme.money(snapshot.earned or 0)
+			local money = {}
+			for _, event in ipairs(snapshot.log or {}) do
+				if event.kind == Constants.LOG.MONEY then table.insert(money, event) end
 			end
+			empty.Visible = #money == 0
+			moneyRows.update(money)
+			Widgets.setEnabled(saveButton, controller:can("save"))
 		end
-		moneyRows.update(money)
-		Widgets.setEnabled(saveButton, controller:can("save"))
-		footerHint.Text = controller:can("save")
-				and "Sauvegarde serveur (DataStore ou mémoire)."
-			or "Votre poste ne peut pas sauvegarder."
 	end
-
-	return {
-		root = root,
-		update = update,
-		rows = buyRows,
-		buyButtons = buyButtons,
-		moneyRows = moneyRows,
-		saveButton = saveButton,
-	}
+	-- Accès depuis la flotte, dans le service de l’engin actuellement consulté.
+	local function openShop(service: string?)
+		pages.select("shop")
+		categories.select(service or "all")
+		controller:setTab("budget")
+	end
+	return { root = root, update = update, rows = rows, saveButton = saveButton, openShop = openShop }
 end
 
 return BudgetPanel

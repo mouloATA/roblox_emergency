@@ -28,14 +28,17 @@ function VehiclePanel.create(parent: any, context: any): any
 	})
 	Widgets.padding(root, 10, 2)
 
-	local title = Widgets.label(root, "Titre", "VÉHICULES", {
-		Size = UDim2.new(1, 0, 0, 24),
+	Widgets.button(root, "OuvrirCatalogue", "Acheter un engin", function()
+		context.openShop(controller.state.category)
+	end, { Position = UDim2.new(1, -148, 0, 0), Size = UDim2.fromOffset(148, 34) })
+	local title = Widgets.label(root, "Titre", "Flotte en service", {
+		Size = UDim2.new(1, -156, 0, 24),
 		TextSize = Theme.text.subtitle,
 		Font = Theme.fonts.bold,
 	})
 	local subtitle = Widgets.label(root, "SousTitre", "", {
 		Position = UDim2.fromOffset(0, 24),
-		Size = UDim2.new(1, 0, 0, 18),
+		Size = UDim2.new(1, -156, 0, 18),
 		TextSize = Theme.text.tiny,
 		TextColor3 = Theme.colors.textMuted,
 	})

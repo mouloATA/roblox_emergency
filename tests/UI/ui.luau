@@ -441,12 +441,50 @@ click(app.tabs.budget)
 check("onglet budget actif", controller.state.tab == "budget")
 check("solde affiché en euros", string.find(app.panels.budget.root:FindFirstChild("Solde").Text, "€", 1, true) ~= nil)
 
+local function use(panel, name)
+	local node = Widgets.find(panel, name)
+	local ancestor = node
+	while ancestor do
+		assert(ancestor.Visible ~= false, name .. " masqué dans " .. ancestor.Name)
+		if ancestor == panel then break end
+		ancestor = ancestor.Parent
+	end
+	click(node)
+end
+
+do
+	local shop = app.panels.budget
+	for _, service in ipairs({"fire","medical","police","technical","command","logistics"}) do
+		use(shop.root, "ServiceAchat_" .. service)
+		local exact = true
+		for _, def in ipairs(Vehicles.list) do
+			if (shop.rows.entries[def.id] ~= nil) ~= (service == def.service) then exact = false end
+		end
+		check("catalogue exact du service " .. service, exact)
+	end
+	controller:openCategory("medical")
+	use(app.panels.vehicles.root, "OuvrirCatalogue")
+	check("achat depuis une flotte filtrée", controller.state.tab == "budget" and shop.rows.entries.VSAV and not shop.rows.entries.FPT)
+	local originalBudget = world.budget
+	world.budget = 0
+	controller:applySnapshot(SnapshotService.build(world))
+	check("motif d’achat affiché si le solde est insuffisant", not shop.rows.entries.VSAV.buy.Active
+		and shop.rows.entries.VSAV.buy.Text == "Solde insuffisant")
+	world.budget = originalBudget
+	controller:applySnapshot(SnapshotService.build(world))
+	local row = shop.rows.entries.VSAV.instance
+	controller:applySnapshot(SnapshotService.build(world))
+	check("filtre et ligne conservés après un snapshot", shop.rows.entries.VSAV.instance == row and not shop.rows.entries.FPT)
+	controller:openCategory("all")
+	use(app.panels.vehicles.root, "OuvrirCatalogue")
+end
+
 local beforeBuy = world.budget
 local fleetBefore = 0
 for _ in pairs(world.vehicles) do
 	fleetBefore += 1
 end
-click(app.panels.budget.buyButtons["VSAV"])
+click(app.panels.budget.rows.entries.VSAV.buy)
 check("achat réellement débité", world.budget == beforeBuy - Vehicles.get("VSAV").cost, world.budget)
 check("flotte agrandie", (function()
 	local count = 0
@@ -458,7 +496,11 @@ end)())
 check("action buy_vehicle envoyée", lastAction() == "buy_vehicle")
 
 world.saveRequested = false
-click(app.panels.budget.saveButton)
+use(app.panels.budget.root, "VueBudget_ledger")
+check("finances affichées seules", Widgets.find(app.panels.budget.root, "Corps").Visible
+	and not Widgets.find(app.panels.budget.root, "Catalogue").Visible)
+use(app.panels.budget.root, "Action_save")
+use(app.panels.budget.root, "VueBudget_shop")
 check("sauvegarde demandée au serveur", world.saveRequested == true)
 check("action save envoyée", lastAction() == "save")
 
@@ -471,9 +513,9 @@ check("changement de poste via le panneau", world.players[player.UserId].role ==
 check("rôle mis à jour dans le contrôleur", controller:role() == Constants.ROLE.INCENDIE)
 
 click(app.tabs.budget)
-check("achat interdit au poste incendie", app.panels.budget.buyButtons["VPC"].Active == false)
+check("achat interdit au poste incendie", app.panels.budget.rows.entries.VPC.buy.Active == false)
 local beforeForbiddenBuy = #actions
-click(app.panels.budget.buyButtons["VPC"])
+click(app.panels.budget.rows.entries.VPC.buy)
 check("bouton désactivé : aucune intention envoyée", #actions == beforeForbiddenBuy)
 
 click(app.tabs.roles)
@@ -770,6 +812,20 @@ do
 		check("onglets et radio dégagés" .. suffix, tab.x+tab.w < radio.x and radio.x+radio.w < mapBox.x)
 		check("journal et carte distincts" .. suffix, journal.x+journal.w < mapBox.x and tab.x+tab.w < journal.x)
 		check("journal au-dessus des commandes" .. suffix, journal.y+journal.h < bottom.y)
+		controller:setTab("budget")
+		local drawer = rect(app.drawer)
+		local catalogue = rect(Widgets.find(app.panels.budget.root, "Catalogue"))
+		check("achats dégagés de la navigation et du pupitre" .. suffix,
+			drawer.x > tab.x + tab.w and drawer.y + drawer.h < bottom.y and inside(catalogue, drawer) and catalogue.h > 175)
+		local filters = rect(Widgets.find(app.panels.budget.root, "ServiceAchat"))
+		local balance = rect(Widgets.find(app.panels.budget.root, "Solde"))
+		local modes = rect(Widgets.find(app.panels.budget.root, "VueBudget"))
+		check("filtres et solde dégagés du catalogue" .. suffix, filters.y + filters.h < catalogue.y and modes.x + modes.w <= balance.x)
+		controller:toast("Véhicule acheté.", true)
+		check("confirmation lisible au-dessus des contrôles" .. suffix, Widgets.find(app.drawer, "RetourAction").Visible
+			and not Widgets.find(app.root, "Notifications").Visible and rect(Widgets.find(app.drawer,"RetourAction")).y < modes.y)
+		controller:clearToasts()
+		controller:closeDrawer()
 		local previousRight = -1
 		for _, name in ipairs({"Moyens","GroupesTemps","CommandesContextuelles","Personnel"}) do
 			local panel = Widgets.find(app.bottom.root,name)
@@ -796,6 +852,19 @@ do
 		check("transmission radio sur deux lignes" .. suffix, rect(app.radioPanel).h >= 2*13*screen.zoom
 			and Widgets.find(app.radioPanel,"Transmission").TextWrapped)
 	end
+end
+do
+	local roster = app.panels.personnel.root
+	controller:setTab("personnel")
+	for _, viewport in ipairs({{812, 600}, {560, 700}}) do
+		app.gui.AbsoluteSize = Vector2.new(viewport[1], viewport[2])
+		controller:render()
+		local columns = Widgets.find(roster, "ColonneDetail").Position
+		check("espace de gestion exploitable en fenêtre de " .. viewport[1],
+			app.drawer.Position.X.Offset == 8 and app.drawer.Size.Y.Offset >= 320
+			and (columns.Y.Scale > 0) == (viewport[1] < 620))
+	end
+	controller:closeDrawer()
 end
 app.gui.AbsoluteSize = Vector2.new(1356, 888)
 app:render(controller.state, controller.snapshot)
@@ -1027,13 +1096,21 @@ check("menu refermé après confirmation", controller.state.menuOpen == false)
 do
 	click(app.tabs.personnel)
 	local panel = app.panels.personnel.root
-	local hire = Widgets.find(panel, "Action_recruit_technician")
+	use(panel, "VuePersonnel_recruit")
+	use(panel, "ServicePersonnel_technical")
+	check("le recrutement technique isole le technicien", Widgets.find(panel, "Offre_technician") and not Widgets.find(panel, "Offre_doctor"))
+	local offer = Widgets.find(panel, "Offre_technician")
 	local id = world.nextPersonnelId
 	local before = world.budget
-	check("tarif du recrutement affiché", string.find(hire.Text, "1 400", 1, true) ~= nil)
-	click(hire)
+	check("tarif du recrutement affiché", string.find(offer:FindFirstChild("Cout").Text, "1 400", 1, true) ~= nil)
+	use(panel, "Action_recruit_technician")
 	check("recrutement par le panneau", lastAction() == "recruit_personnel" and world.personnel[id] ~= nil)
-	click(Widgets.find(panel, "PersonnelLigne_" .. id))
+	use(panel, "VuePersonnel_roster")
+	check("effectif filtré et fiche séparée des offres", Widgets.find(panel, "Garde").Visible and not Widgets.find(panel, "Offres").Visible)
+	use(panel, "PersonnelLigne_" .. id)
+	use(panel, "ServicePersonnel_medical")
+	check("la fiche ne montre pas un agent d’un autre service", not Widgets.find(panel, "Action_train_personnel").Visible)
+	use(panel, "ServicePersonnel_technical")
 	local training = Widgets.find(panel, "Action_train_personnel")
 	click(training)
 	check("formation depuis la fiche", lastAction() == "train_personnel" and world.personnel[id].level == 1)
@@ -1043,6 +1120,54 @@ do
 	click(app.tabs.budget)
 	check("inflation répercutée sur le catalogue", Widgets.find(app.panels.budget.root, "Achat_VSAV")
 		:FindFirstChild("Cout").Text == Theme.money(Vehicles.get("VSAV").cost + 30))
+	click(app.tabs.personnel)
+	use(panel, "ServicePersonnel_fire")
+	local sapeur
+	for _, person in ipairs(controller.snapshot.personnel) do
+		if person.service == "fire" and not person.vehicleId then sapeur = person break end
+	end
+	use(panel, "PersonnelLigne_" .. sapeur.id)
+	controller:select("vehicle", nil)
+	use(panel, "Action_assign_personnel")
+	local pumpId = vehicleOfType("FPT").id
+	check("choix des affectations admissibles", Widgets.find(panel, "ChoixAffectation").Visible
+		and not Widgets.find(panel, "Affecter_" .. vehicleOfType("VSAV").id))
+	use(panel, "Affecter_" .. pumpId)
+	check("affectation réelle depuis la fiche", world.personnel[sapeur.id].vehicleId == pumpId and Widgets.find(panel, "Detail").Visible)
+	use(panel, "Action_unassign_personnel")
+	check("retrait depuis la même fiche", world.personnel[sapeur.id].vehicleId == nil)
+	local store = app.panels.equipment.root
+	click(app.tabs.equipment)
+	controller:select("vehicle", nil)
+	use(store, "FamilleMateriel_medical")
+	check("le magasin filtre par usage", Widgets.find(store, "Stock_SAC_SECOURS") and not Widgets.find(store, "Stock_TUYAU"))
+	use(store, "Action_installer_SAC_SECOURS")
+	check("choix d’un engin depuis le rayon", Widgets.find(store, "Engins").Visible)
+	local pump = vehicleOfType("FPT")
+	use(store, "Choisir_" .. pump.id)
+	check("retour au rayon avec le véhicule choisi", Widgets.find(store, "Stock").Visible and controller.state.vehicleId == pump.id)
+	-- Le PC mobile initial est embarqué dans le VPC. Le déposer rend l’offre visible.
+	use(store, "VueMateriel_fleet")
+	use(store, "Choisir_" .. vehicleOfType("VPC").id)
+	use(store, "VueMateriel_loaded")
+	use(store, "Action_deposer_PC_MOBILE")
+	use(store, "VueMateriel_fleet")
+	use(store, "Choisir_" .. pump.id)
+	use(store, "VueMateriel_stock")
+	use(store, "FamilleMateriel_support")
+	local pc = Widgets.find(store, "Action_installer_PC_MOBILE")
+	check("le matériel incompatible est identifié avant l’installation", pc ~= nil and not pc.Active and pc.Text == "Incompatible")
+	use(store, "FamilleMateriel_medical")
+	local stock = world.equipmentStock.SAC_SECOURS
+	use(store, "Action_installer_SAC_SECOURS")
+	check("installation depuis la catégorie médicale", world.equipmentStock.SAC_SECOURS == stock - 1)
+	use(store, "VueMateriel_loaded")
+	use(store, "Action_deposer_SAC_SECOURS")
+	check("dépose depuis la vue embarquée", world.equipmentStock.SAC_SECOURS == stock)
+	use(store, "VueMateriel_stock")
+	use(store, "FamilleMateriel_security")
+	check("rayon vide expliqué", Widgets.find(store, "Vide").Visible)
+	click(app.tabs.budget)
 	local alternate = {UserId = 17831, Name = "Relève"}
 	NetworkService.handle(world, alternate, "claim_role", {role = Constants.ROLE.COMMANDEMENT})
 	controller:applySnapshot(SnapshotService.build(world))
@@ -1050,7 +1175,7 @@ do
 	check("bouton de passage proposé au titulaire", pass.Active and pass.Visible)
 	click(pass)
 	check("passage de tour depuis le budget", lastAction() == "pass_purchase_turn"
-		and world.purchaseTurn.owner == alternate.UserId and not app.panels.budget.buyButtons.VSAV.Active)
+		and world.purchaseTurn.owner == alternate.UserId and not app.panels.budget.rows.entries.VSAV.buy.Active)
 	world.players[alternate.UserId].connected = false
 end
 

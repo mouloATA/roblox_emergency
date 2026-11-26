@@ -38,14 +38,14 @@ local MainMenu = require(UI:WaitForChild("MainMenu"))
 local App = {}
 
 App.tabs = {
-	{ id = "incidents", label = "Interventions", key = "1" },
-	{ id = "vehicles", label = "Véhicules", key = "2" },
+	{ id = "incidents", label = "Interventions", key = "1", group = "Opérations" },
+	{ id = "missions", label = "Missions", key = "8" },
+	{ id = "command", label = "Commandement", key = "5" },
+	{ id = "vehicles", label = "Flotte", key = "2", group = "Caserne" },
+	{ id = "budget", label = "Achats et finances", key = "6" },
 	{ id = "personnel", label = "Personnel", key = "3" },
 	{ id = "equipment", label = "Matériel", key = "4" },
-	{ id = "command", label = "Commandement", key = "5" },
-	{ id = "budget", label = "Budget", key = "6" },
-	{ id = "roles", label = "Postes", key = "7" },
-	{ id = "missions", label = "Missions", key = "8" },
+	{ id = "roles", label = "Postes", key = "7", group = "Coordination" },
 }
 
 local function logColor(kind: string): any
@@ -183,31 +183,22 @@ function App.create(parent: any, context: any): any
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 	})
-	Widgets.section(tabBody, "Panneaux")
-
 	local tabButtons = {}
-	for _, tab in ipairs(App.tabs) do
-		local button = Widgets.button(tabBody, "Action_tab_" .. tab.id, tab.key .. "  " .. tab.label, function()
-			if audio then
-				audio:play("click")
-			end
+	for index, tab in ipairs(App.tabs) do
+		if tab.group then
+			Widgets.section(tabBody, tab.group).LayoutOrder = index * 2
+		end
+		local button = Widgets.button(tabBody, "Action_tab_" .. tab.id, tab.label, function()
+			if audio then audio:play("click") end
 			controller:setTab(tab.id)
 		end, {
-			Size = UDim2.new(1, 0, 0, 30),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextSize = 10,
-			BackgroundColor3 = Theme.colors.command,
-			TextColor3 = Theme.colors.textDim,
+			Size = UDim2.new(1, -3, 0, 32), LayoutOrder = index * 2 + 1,
+			TextXAlignment = Enum.TextXAlignment.Left, TextSize = Theme.text.small,
+			BackgroundColor3 = Theme.colors.surfaceAlt, TextColor3 = Theme.colors.textDim,
 		})
+		Widgets.padding(button, 0, 6)
 		tabButtons[tab.id] = button
 	end
-
-	Widgets.label(tabBody, "Aide", "WASD · déplacement\n+/− · zoom\nQ/E · rotation\nEspace · pause\nR · recentrer", {
-		Size = UDim2.new(1, -4, 0, 84),
-		TextSize = 8,
-		TextYAlignment = Enum.TextYAlignment.Bottom,
-		TextColor3 = Theme.colors.textMuted,
-	})
 
 	-- ── Mini-carte en haut à droite ───────────────────────────
 	local map = MiniMap.create(root, {
@@ -301,7 +292,7 @@ function App.create(parent: any, context: any): any
 		-- contenu défile à l'intérieur du tiroir.
 		ClipsDescendants = true,
 	})
-	Widgets.stroke(drawer, Theme.colors.steel, 2)
+	Widgets.stroke(drawer, Theme.colors.steel, 1)
 	Widgets.corner(drawer, Theme.radius.small)
 
 	local drawerHeader = Widgets.frame(drawer, "Entete", {
@@ -315,14 +306,18 @@ function App.create(parent: any, context: any): any
 		Font = Theme.fonts.bold,
 		TextColor3 = Theme.colors.text,
 	})
-	local drawerClose = Widgets.button(drawerHeader, "Action_fermer_tiroir", "FERMER  ✕", function()
+	local feedback = Widgets.label(drawerHeader, "RetourAction", "", {
+		Position = UDim2.fromOffset(152, 0), Size = UDim2.new(1, -254, 1, 0),
+		TextWrapped = true, TextSize = Theme.text.small, Visible = false,
+	})
+	local drawerClose = Widgets.button(drawerHeader, "Action_fermer_tiroir", "Fermer", function()
 		controller:closeDrawer()
 	end, {
 		Position = UDim2.new(1, -92, 0, 3),
 		Size = UDim2.fromOffset(84, 20),
 		TextSize = 9,
 		BackgroundColor3 = Theme.colors.command,
-		TextColor3 = Theme.colors.commandText,
+		TextColor3 = Theme.colors.text,
 	})
 
 	local drawerContent = Widgets.frame(drawer, "ContenuTiroir", {
@@ -331,13 +326,14 @@ function App.create(parent: any, context: any): any
 		Size = UDim2.new(1, 0, 1, -26),
 	})
 
+	local budget = BudgetPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot })
 	local panels = {
 		incidents = IncidentPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
-		vehicles = VehiclePanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
+		vehicles = VehiclePanel.create(drawerContent, { controller = controller, snapshot = context.snapshot, openShop = budget.openShop }),
 		personnel = PersonnelPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
 		equipment = EquipmentPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
 		command = CommandPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
-		budget = BudgetPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
+		budget = budget,
 		roles = MultiplayerPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
 		missions = MissionPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot }),
 	}
@@ -449,8 +445,9 @@ function App.create(parent: any, context: any): any
 		status.TextColor3 = (snapshot.budget or 0) >= 0 and Theme.colors.textDim or Theme.colors.danger
 
 		for id, button in pairs(tabButtons) do
-			local active = state.tab == id and state.drawer ~= "none"
-			button.BackgroundColor3 = active and Theme.colors.panelLight or Theme.colors.command
+			local active = (state.drawer == "vehicles" and id == "vehicles")
+				or (state.drawer == "panel" and state.tab == id)
+			button.BackgroundColor3 = active and Theme.colors.selection or Theme.colors.surfaceAlt
 			button.TextColor3 = active and Theme.colors.text or Theme.colors.textDim
 		end
 
@@ -464,6 +461,19 @@ function App.create(parent: any, context: any): any
 			drawerTitle.Text = string.upper(tabLabel(state.tab))
 		end
 
+		local managing = drawerOpen and (activeId == "budget" or activeId == "personnel" or activeId == "equipment")
+		local notice = controller.toasts[#controller.toasts]
+		feedback.Visible = managing and notice ~= nil
+		feedback.Text = notice and notice.message or ""
+		feedback.TextColor3 = notice and not notice.ok and Theme.colors.warning or Theme.colors.text
+		toastsRoot.Visible = not managing
+		local headerHeight = managing and 42 or 26
+		drawerHeader.Size = UDim2.new(1, 0, 0, headerHeight)
+		drawerContent.Position = UDim2.fromOffset(0, headerHeight)
+		drawerContent.Size = UDim2.new(1, 0, 1, -headerHeight)
+		drawerClose.AnchorPoint = Vector2.new(0, 0.5)
+		drawerClose.Position = UDim2.new(1, -92, 0.5, 0)
+		drawerClose.Size = UDim2.fromOffset(84, managing and 30 or 20)
 		for id, panel in pairs(panels) do
 			panel.update(snapshot, state)
 			panel.root.Visible = drawerOpen and id == activeId
@@ -482,6 +492,16 @@ function App.create(parent: any, context: any): any
 			local width, height = absolute.X / factor, absolute.Y / factor
 			self.map.resize(width, height)
 			bottom.resize(width)
+			local left = managing and width >= 900 and (Theme.sizes.tabsCompact + 16) or 8
+			local availableHeight = math.max(1, height - Theme.sizes.topBar - Theme.sizes.bar - 24)
+			drawer.Size = UDim2.new(1, -(left + 8), 0, math.min(managing and 510 or Theme.sizes.drawerHeight, availableHeight))
+			drawer.Position = UDim2.new(0, left, 1, -(Theme.sizes.bar + 8))
+			local feedbackLeft = width - left < 620 and 10 or 152
+			drawerTitle.Visible = not (feedbackLeft == 10 and feedback.Visible)
+			drawerTitle.Size = feedback.Visible and UDim2.new(0, 138, 1, 0) or UDim2.new(1, -120, 1, 0)
+			feedback.Position = UDim2.fromOffset(feedbackLeft, 0)
+			feedback.Size = UDim2.new(1, -(feedbackLeft + 102), 1, 0)
+			panels.personnel.resize(width - left - 32)
 			local centerWidth = math.clamp(width - Theme.sizes.tabsCompact - self.map.root.Size.X.Offset - 32, 1, 720)
 			logPanel.Size = UDim2.fromOffset(centerWidth, 142)
 			radioPanel.Size = UDim2.fromOffset(centerWidth, 44)

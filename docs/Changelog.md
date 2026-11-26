@@ -5,6 +5,13 @@ Le projet suit une version `MAJEUR.MINEUR.CORRECTIF`.
 
 ## [Non publié] — 2026-11-26
 
+### Interface de la caserne
+
+- La navigation regroupe opérations, caserne et coordination. Les achats et les finances ont des vues distinctes. Les 34 véhicules se filtrent par service, avec le solde, le prix réel et les conditions d’achat visibles.
+- Les vues Effectif et Recruter partagent le filtre de service. Chaque fiche affiche les qualifications et permet d’affecter l’agent directement à un engin admissible.
+- Le magasin classe le stock par usage. On peut y choisir un véhicule et consulter le poids et les emplacements occupés à bord. Une confirmation apparaît dans l’en-tête après une action de gestion.
+- Les tests d’interface parcourent les catégories, exercent les transactions sur le serveur et contrôlent la place du tiroir sur quatre résolutions de bureau.
+
 ### Jeu local 0.4.0
 
 - Les équipages reçoivent des ordres d’extinction, de sauvetage, de désincarcération et de réserve. Les matériaux, la propagation et les réserves d’eau déterminent l’évolution des foyers.

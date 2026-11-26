@@ -296,7 +296,7 @@ export type Snapshot = {
 	finished: boolean,
 	players: { { userId: number, name: string, role: string, roleLabel: string } },
 	vehicles: { VehicleSnapshot },
-	personnel: { { id: number, name: string, grade: string, service: string, status: string, vehicleId: number?, fatigue: number, health: number, level: number, transferValue: number, qualifications: { string } } },
+	personnel: { { id: number, name: string, grade: string, service: string, status: string, vehicleId: number?, fatigue: number, health: number, level: number, transferValue: number, qualifications: { string }, qualificationIds: { [string]: boolean } } },
 	incidents: { IncidentSnapshot },
 	groups: { { id: number, name: string, service: string?, vehicles: { number }, sectorId: number? } },
 	sectors: { Sector },

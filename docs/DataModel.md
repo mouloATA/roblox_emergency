@@ -244,7 +244,7 @@ Produit par `SnapshotService.build(world)` et vérifié récursivement par
                   crew, crewCount, crewRequired, equipment, incidentId,
                   route, repairRemaining } },
   personnel = { { id, name, grade, service, status, vehicleId, fatigue, health,
-                  experience, qualifications } },
+                  experience, qualifications, qualificationIds } },
   incidents = { { id, typeId, name, briefing, service, severity, status, x, z,
                   victims, savedVictims, stepIndex, stepCount, stepLabel,
                   stepProgress, stepSeconds, deadlineIn, assigned, onScene,

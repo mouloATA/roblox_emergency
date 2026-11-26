@@ -30,15 +30,15 @@ Theme.colors = {
 	map = Color3.fromRGB(20, 26, 32),
 	mapGrid = Color3.fromRGB(38, 46, 54),
 
-	-- Style « Emergency 4 » : panneaux bleu acier, boutons noirs, états verts.
-	panel = Color3.fromRGB(56, 73, 92),
-	panelDark = Color3.fromRGB(34, 46, 59),
-	panelLight = Color3.fromRGB(78, 98, 118),
-	steel = Color3.fromRGB(126, 140, 154),
+	-- Ardoise pour les surfaces tactiques, libellés clairs et couleurs réservées aux états.
+	panel = Color3.fromRGB(37, 54, 68),
+	panelDark = Color3.fromRGB(24, 35, 46),
+	panelLight = Color3.fromRGB(63, 83, 100),
+	steel = Color3.fromRGB(74, 95, 112),
 	well = Color3.fromRGB(22, 30, 39),
-	command = Color3.fromRGB(16, 17, 19),
-	commandHover = Color3.fromRGB(42, 44, 48),
-	commandText = Color3.fromRGB(214, 66, 52),
+	command = Color3.fromRGB(28, 42, 54),
+	commandHover = Color3.fromRGB(49, 68, 84),
+	commandText = Color3.fromRGB(224, 233, 239),
 	active = Color3.fromRGB(96, 206, 128),
 	inactive = Color3.fromRGB(96, 104, 112),
 }

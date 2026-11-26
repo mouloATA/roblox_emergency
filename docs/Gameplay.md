@@ -160,14 +160,17 @@ peut devenir négatif : c'est un état de jeu assumé) et alimente
 | Réparation | `12 € × points manquants`, immobilisation `1,5 s × points manquants` |
 
 Chaque mouvement est enregistré dans `world.transactions` (120 dernières) et
-les opérations d'argent apparaissent dans « Dernières opérations » du panneau
-Budget. `spent` et `earned` sont cumulés dans `stats`.
+les opérations d'argent apparaissent dans « Dernières opérations » de l’onglet **Finances** du panneau **Achats et finances**. `spent` et `earned` sont cumulés dans `stats`.
 
-**Budget** affiche le responsable des achats et le temps restant. La Direction et le Commandement se partagent les tours. Une transaction réussie, le bouton **Passer mon tour** ou l’expiration des 30 secondes donne la main au poste suivant. Un responsable seul peut acheter en continu.
+Dans **Caserne → Achats et finances**, ouvrez **Acheter un engin** puis le service voulu. Chaque offre indique le prix courant, les places et l’équipage requis. Depuis une flotte filtrée, le bouton **Acheter un engin** ouvre directement le même service.
 
-Dans **Personnel**, recrutez un profil, sélectionnez sa fiche pour le former ou transférez-le à un autre centre. Le VCH demande trois personnes et le VLOG deux. L’option d’équipage automatique tient compte de la qualification technique des recrues.
+Le catalogue affiche le responsable des achats et le temps restant. La Direction et le Commandement se partagent les tours. Une transaction réussie, le bouton **Passer mon tour** ou l’expiration des 30 secondes donne la main au poste suivant. Un responsable seul peut acheter en continu.
+
+Dans **Personnel → Recruter**, choisissez un service et consultez les qualifications et le prix de chaque profil. **Effectif** conserve le service sélectionné. Ouvrez la fiche d’un agent pour l’affecter à un engin admissible, le former ou le transférer à un autre centre. Le VCH demande trois personnes et le VLOG deux. L’option d’équipage automatique tient compte de la qualification technique des recrues.
 
 ## 8. Matériel
+
+Dans **Matériel**, choisissez l’engin destinataire. **Stock** classe les références par usage et permet leur installation. **À bord** affiche la charge, les emplacements utilisés et les actions de dépose.
 
 Le stock est global (`world.equipmentStock`) et le matériel installé appartient
 au véhicule. Installer déplace le stock vers l'engin ; retirer fait l'inverse.
