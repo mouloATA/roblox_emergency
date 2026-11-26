@@ -802,6 +802,7 @@ do
 	-- Les doublures ne calculent pas AbsoluteSize pour les descendants.
 	local function bounds(node, width, height)
 		if node == app.gui then return {x=0, y=0, w=width, h=height, zoom=1} end
+		if node == app.topGui then return {x=168, y=-58, w=width-168, h=58, zoom=1} end
 		local p = bounds(node.Parent, width, height)
 		local x, y, w, h = p.x, p.y, p.w, p.h
 		local pad = node.Parent:FindFirstChildOfClass("UIPadding")
@@ -901,9 +902,10 @@ do
 				end
 			end
 		end
-		local statusBox = rect(app.status)
-		check("statut dégagé du titre et du menu" .. suffix, rect(Widgets.find(app.topBar,"Nom")).x
-			+ rect(Widgets.find(app.topBar,"Nom")).w < statusBox.x and statusBox.x+statusBox.w < rect(app.audioButton).x)
+		check("barre à côté des commandes Roblox" .. suffix,
+			app.topGui.ScreenInsets == Enum.ScreenInsets.TopbarSafeInsets
+			and rect(app.topBar).x > 168 and rect(app.topBar).y >= -58
+			and rect(app.topBar).y + rect(app.topBar).h <= 0)
 		local minFont = math.huge
 		for _, node in ipairs(app.root:GetDescendants()) do
 			if (node.ClassName == "TextLabel" or node.ClassName == "TextButton") and node.Text ~= "" then

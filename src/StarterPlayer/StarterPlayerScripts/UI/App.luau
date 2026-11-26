@@ -98,10 +98,19 @@ function App.create(parent: any, context: any): any
 	hudScale.Name, hudScale.Scale, hudScale.Parent = "EchelleHUD", 1, root
 
 	-- ── Barre supérieure ──────────────────────────────────────
-	local topBar = Widgets.frame(root, "BarreSuperieure", {
+	local topGui = Instance.new("ScreenGui")
+	topGui.Name = "ERSTopbar"
+	topGui.ResetOnSpawn = false
+	topGui.ScreenInsets = Enum.ScreenInsets.TopbarSafeInsets
+	topGui.DisplayOrder = gui.DisplayOrder
+	topGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	topGui.Parent = parent
+	local topBar = Widgets.frame(topGui, "BarreSuperieure", {
 		BackgroundColor3 = Theme.colors.panelDark,
 		BackgroundTransparency = 0.08,
-		Size = UDim2.new(1, 0, 0, Theme.sizes.topBar),
+		Position = UDim2.new(0, 8, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.new(1, -16, 0, Theme.sizes.topBar),
 		ZIndex = 10,
 	})
 	Widgets.stroke(topBar, Theme.colors.steel, 1)
@@ -166,6 +175,19 @@ function App.create(parent: any, context: any): any
 	})
 	audioButton.TextColor3 = Theme.colors.active
 	audioButton.Visible = audio ~= nil
+
+	-- Roblox recalcule cette zone quand les bulles natives ou la fenêtre changent.
+	local function resizeTopbar()
+		local width = topGui.AbsoluteSize.X - 16
+		local compact = width < 780
+		brandName.Visible = not compact
+		city.Visible = not compact
+		status.Position = UDim2.new(0, compact and 64 or 278, 0.5, 0)
+		status.Size = UDim2.new(1, compact and -264 or -478, 0, 22)
+		status.Visible = width >= 380
+	end
+	topGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(resizeTopbar)
+	resizeTopbar()
 
 	-- ── Colonne des panneaux ──────────────────────────────────
 	local tabColumn = Widgets.frame(root, "Onglets", {
@@ -403,6 +425,7 @@ function App.create(parent: any, context: any): any
 
 	local app = {
 		gui = gui,
+		topGui = topGui,
 		root = root,
 		topBar = topBar,
 		status = status,
