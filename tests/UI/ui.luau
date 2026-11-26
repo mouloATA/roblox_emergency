@@ -820,6 +820,42 @@ do
 			y=y + pos.Y.Scale*h + pos.Y.Offset*p.zoom - nh*node.AnchorPoint.Y,
 			w=nw, h=nh, zoom=p.zoom*own}
 	end
+	-- Le tiroir de flotte s'ouvre depuis la colonne et depuis les catégories du pupitre.
+	-- Vérifie le passage direct d'un onglet à l'autre dans les deux cas.
+	for _, resolution in ipairs({{1904,794},{1904,734},{1024,768},{900,560},{812,600},{560,700},{2560,1440}}) do
+		local w, h = resolution[1], resolution[2]
+		local suffix = string.format(" %d × %d", w, h)
+		app.gui.AbsoluteSize = Vector2.new(w,h)
+		controller:render()
+		local nav = bounds(Widgets.find(app.root, "Onglets"), w, h)
+		local function accessible(id)
+			local box = bounds(app.drawer, w, h)
+			return app.drawer.Visible and app.panels[id].root.Visible and box.w > 0
+				and box.x >= nav.x + nav.w + 1 and box.x + box.w <= w
+				and box.y + box.h < bounds(app.bottom.root, w, h).y
+		end
+		controller:openCategory("medical")
+		check("flotte filtrée à droite du menu" .. suffix, accessible("vehicles"))
+		local viewport = Widgets.find(app.drawer, "FenetreTiroir")
+		local viewportWidth = bounds(viewport, w, h).w
+		local content = bounds(Widgets.find(viewport, "ContenuTiroir"), w, h)
+		check("commandes de flotte accessibles dans le tiroir" .. suffix,
+			viewport.ClipsDescendants and viewport.ScrollingDirection == Enum.ScrollingDirection.X
+			and viewport.ScrollingEnabled == (content.w > viewportWidth + 0.01)
+			and content.w >= 800 and near(viewport.CanvasSize.X.Offset * content.zoom, content.w))
+		if viewport.ScrollingEnabled then
+			viewport.CanvasPosition = Vector2.new(120, 0)
+			controller:render()
+			check("lecture conservée dans la flotte" .. suffix, viewport.CanvasPosition.X == 120)
+			click(app.tabs.missions)
+			check("nouvel onglet affiché depuis le début" .. suffix, viewport.CanvasPosition.X == 0)
+		end
+		for _, id in ipairs({"vehicles","incidents","command","missions","roles","budget","equipment","personnel"}) do
+			click(app.tabs[id])
+			check("navigation latérale accessible dans " .. id .. suffix, accessible(id))
+		end
+		controller:closeDrawer()
+	end
 	for _, resolution in ipairs({{1024,768},{1280,720},{1920,1080},{2560,1440}}) do
 		local w, h = resolution[1], resolution[2]
 		local suffix = string.format(" %d × %d", w, h)
@@ -887,8 +923,8 @@ do
 		controller:render()
 		local columns = Widgets.find(roster, "ColonneDetail").Position
 		check("espace de gestion exploitable en fenêtre de " .. viewport[1],
-			app.drawer.Position.X.Offset == 8 and app.drawer.Size.Y.Offset >= 320
-			and (columns.Y.Scale > 0) == (viewport[1] < 620))
+			app.drawer.Position.X.Offset >= Theme.sizes.tabsCompact + 16 and app.drawer.Size.Y.Offset >= 320
+			and (columns.Y.Scale > 0) == (viewport[1] - app.drawer.Position.X.Offset - 32 < 620))
 	end
 	controller:closeDrawer()
 end

@@ -7,6 +7,7 @@ Le projet suit une version `MAJEUR.MINEUR.CORRECTIF`.
 
 ### Interface de la caserne
 
+- Tous les panneaux s’ouvrent à droite du menu latéral, y compris la flotte ouverte depuis les moyens disponibles. Dans une fenêtre étroite, les fiches larges défilent horizontalement et les boutons de navigation restent accessibles.
 - Les achats de véhicules et le recrutement proposent un tri par prix croissant ou décroissant. Chaque catalogue conserve son choix de tri pendant la consultation des services.
 - La navigation regroupe opérations, caserne et coordination. Les achats et les finances ont des vues distinctes. Les 34 véhicules se filtrent par service, avec le solde, le prix réel et les conditions d’achat visibles.
 - Les vues Effectif et Recruter partagent le filtre de service. Chaque fiche affiche les qualifications et permet d’affecter l’agent directement à un engin admissible.

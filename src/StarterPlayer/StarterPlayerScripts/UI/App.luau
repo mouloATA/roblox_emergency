@@ -281,11 +281,12 @@ function App.create(parent: any, context: any): any
 	end)
 
 	-- ── Tiroir de panneaux, au-dessus de la barre ─────────────
+	local drawerLeft = tabColumn.Position.X.Offset + tabColumn.Size.X.Offset + 8
 	local drawer = Widgets.frame(root, "Tiroir", {
 		BackgroundColor3 = Theme.colors.panelDark,
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 8, 1, -(Theme.sizes.bar + 8)),
-		Size = UDim2.new(1, -16, 0, Theme.sizes.drawerHeight),
+		Position = UDim2.new(0, drawerLeft, 1, -(Theme.sizes.bar + 8)),
+		Size = UDim2.new(1, -(drawerLeft + 8), 0, Theme.sizes.drawerHeight),
 		ZIndex = 20,
 		Visible = false,
 		-- Un panneau ne doit jamais déborder sur la barre inférieure : son
@@ -320,10 +321,21 @@ function App.create(parent: any, context: any): any
 		TextColor3 = Theme.colors.text,
 	})
 
-	local drawerContent = Widgets.frame(drawer, "ContenuTiroir", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, 26),
-		Size = UDim2.new(1, 0, 1, -26),
+	-- Les fiches larges peuvent défiler dans le tiroir. La navigation et Fermer restent fixes.
+	local drawerViewport = Instance.new("ScrollingFrame")
+	drawerViewport.Name = "FenetreTiroir"
+	drawerViewport.BackgroundTransparency = 1
+	drawerViewport.BorderSizePixel = 0
+	drawerViewport.ClipsDescendants = true
+	drawerViewport.ScrollingDirection = Enum.ScrollingDirection.X
+	drawerViewport.ScrollBarThickness = 6
+	drawerViewport.ScrollBarImageColor3 = Theme.colors.steel
+	drawerViewport.CanvasSize = UDim2.fromOffset(0, 0)
+	drawerViewport.CanvasPosition = Vector2.new(0, 0)
+	drawerViewport.Parent = drawer
+	local scrollPage: string? = nil
+	local drawerContent = Widgets.frame(drawerViewport, "ContenuTiroir", {
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
 	})
 
 	local budget = BudgetPanel.create(drawerContent, { controller = controller, snapshot = context.snapshot })
@@ -469,8 +481,8 @@ function App.create(parent: any, context: any): any
 		toastsRoot.Visible = not managing
 		local headerHeight = managing and 42 or 26
 		drawerHeader.Size = UDim2.new(1, 0, 0, headerHeight)
-		drawerContent.Position = UDim2.fromOffset(0, headerHeight)
-		drawerContent.Size = UDim2.new(1, 0, 1, -headerHeight)
+		drawerViewport.Position = UDim2.fromOffset(0, headerHeight)
+		drawerViewport.Size = UDim2.new(1, 0, 1, -headerHeight)
 		drawerClose.AnchorPoint = Vector2.new(0, 0.5)
 		drawerClose.Position = UDim2.new(1, -92, 0.5, 0)
 		drawerClose.Size = UDim2.fromOffset(84, managing and 30 or 20)
@@ -492,16 +504,26 @@ function App.create(parent: any, context: any): any
 			local width, height = absolute.X / factor, absolute.Y / factor
 			self.map.resize(width, height)
 			bottom.resize(width)
-			local left = managing and width >= 900 and (Theme.sizes.tabsCompact + 16) or 8
+			local visibleWidth = math.max(1, width - drawerLeft - 8)
+			-- Les fiches opérationnelles ont deux colonnes et une rangée de commandes.
+			local contentWidth = math.max(visibleWidth, managing and 360 or 800)
+			local overflow = contentWidth > visibleWidth
+			drawerViewport.ScrollingEnabled = overflow
+			drawerViewport.CanvasSize = UDim2.fromOffset(contentWidth, 0)
+			drawerContent.Size = UDim2.new(0, contentWidth, 1, overflow and -drawerViewport.ScrollBarThickness or 0)
+			local page = drawerOpen and activeId or nil
+			if page ~= scrollPage or (not overflow and drawerViewport.CanvasPosition.X ~= 0) then
+				drawerViewport.CanvasPosition = Vector2.new(0, 0)
+			end
+			scrollPage = page
 			local availableHeight = math.max(1, height - Theme.sizes.topBar - Theme.sizes.bar - 24)
-			drawer.Size = UDim2.new(1, -(left + 8), 0, math.min(managing and 510 or Theme.sizes.drawerHeight, availableHeight))
-			drawer.Position = UDim2.new(0, left, 1, -(Theme.sizes.bar + 8))
-			local feedbackLeft = width - left < 620 and 10 or 152
+			drawer.Size = UDim2.new(1, -(drawerLeft + 8), 0, math.min(managing and 510 or Theme.sizes.drawerHeight, availableHeight))
+			local feedbackLeft = visibleWidth < 620 and 10 or 152
 			drawerTitle.Visible = not (feedbackLeft == 10 and feedback.Visible)
 			drawerTitle.Size = feedback.Visible and UDim2.new(0, 138, 1, 0) or UDim2.new(1, -120, 1, 0)
 			feedback.Position = UDim2.fromOffset(feedbackLeft, 0)
 			feedback.Size = UDim2.new(1, -(feedbackLeft + 102), 1, 0)
-			panels.personnel.resize(width - left - 32)
+			panels.personnel.resize(contentWidth - 24)
 			local centerWidth = math.clamp(width - Theme.sizes.tabsCompact - self.map.root.Size.X.Offset - 32, 1, 720)
 			logPanel.Size = UDim2.fromOffset(centerWidth, 142)
 			radioPanel.Size = UDim2.fromOffset(centerWidth, 44)
