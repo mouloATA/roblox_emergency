@@ -197,6 +197,7 @@ local GUI_CLASSES = {
 }
 
 local SIGNAL_NAMES = {
+	Destroying = true,
 	MouseButton1Click = true,
 	MouseButton1Down = true,
 	MouseButton1Up = true,
@@ -514,6 +515,7 @@ local tweenService = {
 }
 
 local userInputService = {
+	WindowFocusReleased = newSignal(),
 	InputBegan = newSignal(),
 	InputChanged = newSignal(),
 	InputEnded = newSignal(),

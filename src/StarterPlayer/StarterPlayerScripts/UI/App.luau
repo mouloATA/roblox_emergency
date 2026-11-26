@@ -423,6 +423,18 @@ function App.create(parent: any, context: any): any
 	-- ── Menu principal (au-dessus de tout) ────────────────────
 	local menu = MainMenu.create(root, { controller = controller, snapshot = context.snapshot })
 
+	local mapWidth: number? = nil
+	local journalSize: any = nil
+	Widgets.resizeHandle(map.root, UDim2.new(0, 8, 1, -2), Vector2.new(0, 1), Vector2.new(-1, 1),
+		function() return hudScale.Scale end, function(width, _height)
+			mapWidth = width
+			controller:render()
+		end)
+	Widgets.resizeHandle(logPanel, UDim2.new(1, 0, 0, 0), Vector2.new(1, 0), Vector2.new(1, -1),
+		function() return hudScale.Scale end, function(width, height)
+			journalSize = Vector2.new(width, height)
+			controller:render()
+		end)
 	local app = {
 		gui = gui,
 		topGui = topGui,
@@ -525,7 +537,7 @@ function App.create(parent: any, context: any): any
 			hudScale.Scale = factor
 			root.Size = UDim2.fromScale(1 / factor, 1 / factor)
 			local width, height = absolute.X / factor, absolute.Y / factor
-			self.map.resize(width, height)
+			self.map.resize(width, height, mapWidth)
 			bottom.resize(width)
 			local visibleWidth = math.max(1, width - drawerLeft - 8)
 			-- Les fiches opérationnelles ont deux colonnes et une rangée de commandes.
@@ -548,7 +560,15 @@ function App.create(parent: any, context: any): any
 			feedback.Size = UDim2.new(1, -(feedbackLeft + 102), 1, 0)
 			panels.personnel.resize(contentWidth - 24)
 			local centerWidth = math.clamp(width - Theme.sizes.tabsCompact - self.map.root.Size.X.Offset - 32, 1, 720)
-			logPanel.Size = UDim2.fromOffset(centerWidth, 142)
+			local journalWidth = centerWidth
+			local journalHeight = 142
+			if journalSize then
+				local maximumWidth = math.max(1, width - Theme.sizes.tabsCompact - self.map.root.Size.X.Offset - 32)
+				journalWidth = math.clamp(journalSize.X, math.min(180, maximumWidth), maximumWidth)
+				local maximumHeight = math.max(1, availableHeight - 54)
+				journalHeight = math.clamp(journalSize.Y, math.min(80, maximumHeight), maximumHeight)
+			end
+			logPanel.Size = UDim2.fromOffset(journalWidth, journalHeight)
 			radioPanel.Size = UDim2.fromOffset(centerWidth, 44)
 			toastsRoot.Size = UDim2.fromOffset(math.min(380, centerWidth), 190)
 		end

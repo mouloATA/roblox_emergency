@@ -485,7 +485,7 @@ function MiniMap.create(parent: any, context: any): any
 	-- Réduit la carte pour qu'elle reste sous la barre supérieure, à droite de
 	-- la colonne d'onglets et au-dessus de la barre inférieure. Sans cela, une
 	-- fenêtre courte la ferait passer sous la barre de commandes.
-	local function resize(viewportX: number?, viewportY: number?): ()
+	local function resize(viewportX: number?, viewportY: number?, requestedWidth: number?): ()
 		if not viewportX or not viewportY or viewportX <= 0 or viewportY <= 0 then
 			return
 		end
@@ -495,6 +495,10 @@ function MiniMap.create(parent: any, context: any): any
 		local fitY = availableY / Theme.sizes.minimapHeight
 		local fraction = math.clamp(math.min(1, fitX, fitY), 0.50, 1)
 		local side = math.max(140, math.floor((Theme.sizes.minimapHeight * fraction) - 76))
+		if requestedWidth then
+			local maximum = math.max(140, math.min(availableX - 196, availableY - 76))
+			side = math.clamp(requestedWidth - 16, math.min(240, maximum), maximum)
+		end
 		local width = side + 16
 		if root.Size.X.Offset == width and controls.Size.X.Offset == side and root.Size.Y.Offset == side + 76 then return end
 		root.Size = UDim2.fromOffset(width, side + 76)

@@ -1401,6 +1401,31 @@ end)())
 
 -- ─────────────────────────────────────────────────────────────
 print("")
+do
+	controller:closeDrawer()
+	app.gui.AbsoluteSize = Vector2.new(1904, 900)
+	controller:render()
+	local inputs = game:GetService("UserInputService")
+	local function drag(panel, dx, dy)
+		local input = {UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(500,500,0)}
+		Widgets.find(panel, "Redimensionner").InputBegan:Fire(input)
+		inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(500+dx,500+dy,0)})
+		inputs.InputEnded:Fire(input)
+	end
+	local before = app.map.root.Size.X.Offset
+	drag(app.map.root, -90, 90)
+	check("carte agrandie par sa poignée", app.map.root.Size.X.Offset > before)
+	local resized = app.map.root.Size.X.Offset
+	controller:applySnapshot(SnapshotService.build(world))
+	check("taille carte conservée entre snapshots", app.map.root.Size.X.Offset == resized)
+	drag(app.logPanel, -150, -100)
+	check("journal redimensionné dans les deux axes", app.logPanel.Size.X.Offset < 720 and app.logPanel.Size.Y.Offset == 242)
+	drag(app.map.root, -10000, 10000)
+	check("carte bornée au-dessus du pupitre", app.map.root.Size.Y.Offset <= 900 - Theme.sizes.topBar - Theme.sizes.bar - 24)
+	local size = app.logPanel.Size.Y.Offset
+	inputs.InputChanged:Fire({UserInputType = Enum.UserInputType.MouseMovement, Position = Vector3.new(1,1,0)})
+	check("relâcher la souris termine le redimensionnement", app.logPanel.Size.Y.Offset == size)
+end
 print(string.format("  Interface : %d réussite(s), %d échec(s)", passed, failed))
 if failed > 0 then
 	error(string.format("%d test(s) d'interface en échec", failed))

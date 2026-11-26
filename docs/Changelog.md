@@ -7,6 +7,7 @@ Le projet suit une version `MAJEUR.MINEUR.CORRECTIF`.
 
 ### Interface de la caserne
 
+- La carte tactique se redimensionne par sa poignée inférieure gauche et le journal par sa poignée supérieure droite, à la souris ou au toucher. Les dimensions choisies restent actives pendant la session et sont limitées à l’espace disponible.
 - La barre ERS occupe la zone libre à droite des bulles Roblox, sur la même ligne. Sa largeur suit automatiquement les commandes natives et les dimensions de la fenêtre.
 - Tous les panneaux s’ouvrent à droite du menu latéral, y compris la flotte ouverte depuis les moyens disponibles. Dans une fenêtre étroite, les fiches larges défilent horizontalement et les boutons de navigation restent accessibles.
 - Les achats de véhicules et le recrutement proposent un tri par prix croissant ou décroissant. Chaque catalogue conserve son choix de tri pendant la consultation des services.

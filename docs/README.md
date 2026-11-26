@@ -35,14 +35,14 @@ Le fichier local `build/ERS.rbxlx` s’ouvre dans Roblox Studio. Utilisez **F5**
 
 ## Vérifications locales
 
-Le contrôle de syntaxe couvre 75 fichiers Luau. Les quatre suites totalisent **1 077 assertions réussies**.
+Le contrôle de syntaxe couvre 75 fichiers Luau. Les quatre suites totalisent **1 082 assertions réussies**.
 
 | Suite | Assertions |
 | --- | ---: |
 | Unitaire | 124 |
 | Intégration | 267 |
 | Multijoueur | 85 |
-| Interface | 601 |
+| Interface | 606 |
 
 Les tests déroulent les trois missions, les navettes vers l’hôpital et le passage de 19 h à 21 h. Ils mesurent le HUD en 1024 × 768, 1280 × 720, 1920 × 1080 et 2560 × 1440. Dans Roblox Studio, la mission de l’église a été menée jusqu’à l’admission d’une victime. Le crépuscule et le HUD corrigé ont été observés en partie. À 21 h, la sonde comptait 60 lampadaires et 334 vitres allumés. Le client a mesuré un signal en sortie de la radio et pendant la lecture de la sirène.
 
